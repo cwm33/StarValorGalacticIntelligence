@@ -35,3 +35,12 @@ The first command checks a handwritten cyclic NRBF fixture and malformed input. 
 - Unknown fields survive in the raw record graph. Unfamiliar roots are available for raw inspection. Unknown versions receive a warning. Array encodings that the NRBF reader or the decoder's safe materialization path cannot handle produce import errors. Imports are limited to 32 MiB per file with additional array element limits.
 
 The decoder uses the record API described in [Microsoft's NRBF migration guide](https://learn.microsoft.com/dotnet/standard/serialization/binaryformatter-migration-guide/read-nrbf-payloads).
+
+## Standalone game data resolver
+
+The optional [.NET 10 resolver library](docs/game-data-resolver/README.md) resolves category-scoped numeric IDs using explicit localization bindings and external mod/user mappings. It has no game data dependencies or verified built-in section mappings. See [INTEGRATION.md](INTEGRATION.md) for incorporation steps and [validation requirements](docs/game-data-resolver/VALIDATION.md) for remaining evidence gaps.
+
+```sh
+dotnet run --project tests/GameDataResolver.Tests
+dotnet run --project examples/GameDataResolver.Demo
+```
