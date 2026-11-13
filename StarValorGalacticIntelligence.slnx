@@ -1,9 +1,14 @@
 <Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/GameDataResolver.Demo/GameDataResolver.Demo.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Api/Api.csproj" />
     <Project Path="src/Decoder/Decoder.csproj" />
+    <Project Path="src/GameDataResolver/GameDataResolver.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/GameDataResolver.Tests/GameDataResolver.Tests.csproj" />
     <Project Path="tests/Regression/Regression.csproj" />
   </Folder>
 </Solution>

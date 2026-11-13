@@ -1,0 +1,10 @@
+# SYNTHETIC ONLY: section numbers, IDs, and names are invented test data.
+[1] Example weapons
+000 Synthetic Light Emitter|description|future-field|
+001 Émetteur léger|description française|
+002 合成レーザー|追加情報|
+[22] Example ships
+000 Synthetic Scout|
+055 Synthetic Frigate|
+[9999] Unknown future section
+2147483647 Future Entry|extra|fields|are|preserved|
