@@ -2,7 +2,14 @@
 
 This sprint extends the existing .NET 10 / ASP.NET Core / Vue 3 / TypeScript / Tailwind application. It adds no accounts, cloud services, runtime package dependencies, or database. All new validation in this cloud sprint uses synthetic fixtures. The older installed-game validation record in `game-data-resolver/VALIDATION.md` is historical evidence, not a claim that game files were available here.
 
-## Delivered vertical slices
+## Local integration
+
+- The Atlas renders directed, discovery-gated generated links from authentic 2.05 and 2.251 layouts. Sector details show exits and shortest gate paths. The advisor scores reach within two gate jumps and Trade Analyzer displays gate hops for its opt-in indicative spreads.
+- Modern sector summary direction comes from the installed 2.251d implementation. No executable quote is extracted. Galaxy Reforged and unsupported versions retain raw observations without the base-game interpretation.
+- Station inventories retain their original game IDs and join by source graph record within the import. Legacy codex with a missing, negative or ambiguous game ID cannot resolve a location. Snapshot comparison excludes ambiguous station IDs.
+- Fleet Command shows saved cargo and storage, including ship items, base Fleet Commander skill and typed roster records when present. The modern ownership flag identifies player installations in Atlas and Industry. See [Local validation](LOCAL_VALIDATION.md) for actual inputs and gaps.
+
+## Cloud baseline delivered vertical slices
 
 | Milestone | Delivered | Confidence and remaining work |
 | --- | --- | --- |
@@ -30,9 +37,9 @@ These are functional, bounded slices, not a declaration that every requested fea
 
 ## Next evidence-driven integrations
 
-1. Validate player-facing buy/sell direction, stock freshness and market refresh behavior in both save layouts. Add a version/profile-scoped verified quote adapter only after reproducing actual transactions.
+1. Capture controlled modern purchases and sales to establish freshness, station price and quantity constraints, reputation and skill modifiers. Validate legacy and modded mechanics independently.
 2. Identify cargo capacity, commodity volume, current cargo, player fleet and station ownership from authentic records. Keep unknown and zero distinct.
-3. Validate explicit gate endpoints and stable cross-save sector identities. Add routing only over extracted, verified connectivity; do not approximate jumps with proximity.
+3. Correlate generated endpoints with live gate prompts. Capture a player-built gate pair, including disabled and local configurations, and validate route usability and access.
 4. Validate station services, sector technology, faction endpoint mapping and access rules before adding them to scores or trade executability.
 5. Supply private recipe/stat catalogs with explicit game/DLC/mod versions and evidence. Add production timing and fleet fitting calculations only after validation.
 6. Compare successive authentic saves to validate station/item keys, schema evolution and loadout matching. Extend comparison only when stable keys exist.
