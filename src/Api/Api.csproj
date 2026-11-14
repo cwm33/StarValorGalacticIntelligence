@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\Intelligence\Intelligence.csproj" />
     <ProjectReference Include="..\Decoder\Decoder.csproj" />
     <ProjectReference Include="..\GameDataResolver\GameDataResolver.csproj" />
   </ItemGroup>

@@ -6,9 +6,11 @@
     <Project Path="src/Api/Api.csproj" />
     <Project Path="src/Decoder/Decoder.csproj" />
     <Project Path="src/GameDataResolver/GameDataResolver.csproj" />
+    <Project Path="src/Intelligence/Intelligence.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GameDataResolver.Tests/GameDataResolver.Tests.csproj" />
+    <Project Path="tests/Intelligence.Tests/Intelligence.Tests.csproj" />
     <Project Path="tests/Regression/Regression.csproj" />
   </Folder>
 </Solution>

@@ -71,6 +71,8 @@ app.MapPost("/api/import", async (HttpRequest request) =>
     finally { importLock.Release(); }
 });
 
+app.MapGet("/api/{id:guid}/intelligence", (Guid id, bool? spoilers) =>
+    Find(id) is { } s ? Results.Ok(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value) : Missing());
 app.MapGet("/api/resolver", () => Results.Ok(catalog.Diagnostics()));
 app.MapGet("/api/{id:guid}/resolver", (Guid id, bool? spoilers) =>
 {
@@ -137,5 +139,10 @@ static string Cell(object? value)
 
 sealed record Session(Guid Id, Graph Main, Graph? Info, string Mechanics, SaveView Safe, GameDataCatalog Catalog)
 {
+    public DateTimeOffset ImportedAt { get; } = DateTimeOffset.UtcNow;
+    public Lazy<GalacticIntelligence.GalaxySnapshot> SafeIntelligence => safeIntelligence ??= new(() => IntelligenceProjection.Create(Safe, Id.ToString(), ImportedAt, false));
+    public Lazy<GalacticIntelligence.GalaxySnapshot> FullIntelligence => fullIntelligence ??= new(() => IntelligenceProjection.Create(Full.Value, Id.ToString(), ImportedAt, true));
+    private Lazy<GalacticIntelligence.GalaxySnapshot>? safeIntelligence;
+    private Lazy<GalacticIntelligence.GalaxySnapshot>? fullIntelligence;
     public Lazy<SaveView> Full { get; } = new(() => Catalog.Enrich(SaveView.Create(Main, Info, Mechanics, true), Mechanics));
 }
