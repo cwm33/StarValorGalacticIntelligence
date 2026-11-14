@@ -88,9 +88,9 @@ sealed class GameDataCatalog
             warnings.Add("English localization unavailable. Set GameData__InstallationDirectory and restart.");
         if (mechanics == "Unknown") warnings.Add("Mechanics profile is unknown. Local base-game mappings may differ from this save.");
         if (mechanics == "Galaxy Reforged")
-            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Ship models may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
+            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         if (!string.IsNullOrEmpty(version) && version is not ("2.05" or "2.251"))
-            warnings.Add("The save version is outside the validated mapping range. Ship models may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
+            warnings.Add("The save version is outside the validated mapping range. Ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         return new { snapshot.Sources, categories = counts, entries = counts.Values.Sum(), snapshot.Issues, warnings };
     }
 
@@ -99,7 +99,7 @@ sealed class GameDataCatalog
         var version = Convert.ToString(view.Metadata.GetValueOrDefault("savedVersion"), CultureInfo.InvariantCulture);
         var snapshot = Select(mechanics);
         var allowBase = mechanics != "Galaxy Reforged" && version is ("2.05" or "2.251");
-        void AddName(Dictionary<string, object?> row, string field, IdentifierCategory category)
+        void AddName(Dictionary<string, object?> row, string field, IdentifierCategory category, bool allowBaseReference = false)
         {
             if (row.GetValueOrDefault(field) is not int id) return;
             var lookup = snapshot.Registry.Resolve(category, id);
@@ -127,7 +127,8 @@ sealed class GameDataCatalog
                 status = "Resolved";
             }
 
-            else if (category == IdentifierCategory.ShipModel && source?.Kind == SourceKind.VanillaLocalization)
+            else if ((allowBaseReference || category == IdentifierCategory.ShipModel) &&
+                source?.Kind == SourceKind.VanillaLocalization)
             {
                 name = lookup.Name;
                 status = "BaseGameReference";
@@ -174,7 +175,7 @@ sealed class GameDataCatalog
                     AddName(row, "weaponIndex", IdentifierCategory.Weapon);
                     break;
                 case "Installed equipment":
-                    AddName(row, "equipmentID", IdentifierCategory.Equipment);
+                    AddName(row, "equipmentID", IdentifierCategory.Equipment, allowBaseReference: true);
                     break;
             }
         }
