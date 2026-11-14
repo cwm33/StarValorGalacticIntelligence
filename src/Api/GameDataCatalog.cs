@@ -4,7 +4,7 @@ using GalacticIntelligence.GameData;
 
 sealed record CatalogName(int RawId, string Category, string? Name, string Status, string? Source, int? Section)
 {
-    public string DisplayName => Name ?? $"Unknown {Category switch
+    public string DisplayName => Status == "BaseGameReference" ? $"{Name} (base-game reference)" : Name ?? $"Unknown {Category switch
     {
         "ship-model" => "Ship",
         "station-model" => "Station Model",
@@ -88,9 +88,9 @@ sealed class GameDataCatalog
             warnings.Add("English localization unavailable. Set GameData__InstallationDirectory and restart.");
         if (mechanics == "Unknown") warnings.Add("Mechanics profile is unknown. Local base-game mappings may differ from this save.");
         if (mechanics == "Galaxy Reforged")
-            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Only explicitly validated overrides and saved weapon names are used.");
+            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Ship models may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         if (!string.IsNullOrEmpty(version) && version is not ("2.05" or "2.251"))
-            warnings.Add("The save version is outside the validated mapping range. Only explicitly validated overrides and saved weapon names are used.");
+            warnings.Add("The save version is outside the validated mapping range. Ship models may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         return new { snapshot.Sources, categories = counts, entries = counts.Values.Sum(), snapshot.Issues, warnings };
     }
 
@@ -125,6 +125,12 @@ sealed class GameDataCatalog
             {
                 name = lookup.Name;
                 status = "Resolved";
+            }
+
+            else if (category == IdentifierCategory.ShipModel && source?.Kind == SourceKind.VanillaLocalization)
+            {
+                name = lookup.Name;
+                status = "BaseGameReference";
             }
 
             var label = name is null ? null : source?.Kind.ToString() ?? "SaveWeaponCatalog";
@@ -183,7 +189,8 @@ sealed class GameDataCatalog
         return new
         {
             resolved = identifiers.Where(x => x.Status == "Resolved"),
-            unresolved = identifiers.Where(x => x.Status != "Resolved")
+            referenceNames = identifiers.Where(x => x.Status == "BaseGameReference"),
+            unresolved = identifiers.Where(x => x.Status is "Unresolved" or "Conflict")
         };
     }
 

@@ -7,7 +7,7 @@ type Catalog = {
   issues: { code: string, severity: string, source: string, line?: number, section?: number, category?: string, id?: number }[],
   warnings: string[]
 }
-type Diagnostics = { catalog: Catalog, observed?: { resolved: NameResolution[], unresolved: NameResolution[] } }
+type Diagnostics = { catalog: Catalog, observed?: { resolved: NameResolution[], referenceNames: NameResolution[], unresolved: NameResolution[] } }
 type Row = Record<string, unknown>
 type View = { metadata: Row, tables: Record<string, Row[]>, warnings: string[], hiddenSectors: number }
 type RecordSummary = { id: number, type: string, kind: string }
@@ -66,7 +66,7 @@ function resolution(row: Row, key: string): NameResolution | undefined {
 function cell(row: Row, key: string) {
   const result = resolution(row, key)
   if (!result) return show(row[key])
-  return showIds.value && result.name ? result.name + ' (#' + result.rawId + ')' : result.displayName
+  return showIds.value && result.name ? result.displayName + ' (#' + result.rawId + ')' : result.displayName
 }
 function hint(row: Row, key: string) {
   const result = resolution(row, key)
@@ -194,7 +194,7 @@ async function openRecord(number: number, nextPage = 0) {
         </details>
         <template v-if="diagnostics.observed">
           <details v-for="(entries, status) in diagnostics.observed" :key="status">
-            <summary>{{ entries.length }} {{ status }} identifiers in this view</summary>
+            <summary>{{ entries.length }} {{ status === 'referenceNames' ? 'base-game reference' : status }} identifiers in this view</summary>
             <ul class="max-h-64 overflow-auto text-sm">
               <li v-for="entry in entries" :key="entry.category + ':' + entry.rawId">
                 {{ entry.category }} #{{ entry.rawId }} · {{ entry.name ?? entry.status }}
