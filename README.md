@@ -17,6 +17,10 @@ In Save Explorer, select `SaveGameData_XX.dat` and optionally the matching `Save
 
 The default view includes discovered sectors and stations marked discovered within those sectors. The spoiler switch also enables raw Schema search, reference navigation, and raw JSON export. Normalized JSON and table CSV exports follow the current spoiler setting. Table CSV exports the entire selected table. Raw record IDs are graph-local navigation identifiers, distinct from serialized game IDs.
 
+## Recent saves
+
+The import form remembers up to five successful imports in this browser, including the optional companion and selected mechanics profile. **Quick load** opens the copy from your last import. Import the files again to capture newer gameplay. Uncheck **Keep a browser copy for quick loading** for a one-time import. Use **Remove** or **Clear history** to delete browser copies.
+
 ## Game data and diagnostics
 
 The API checks the standard Windows Steam install for `Language/english_main.txt`. For a different Steam library or another install, set the game directory before launching from PowerShell.

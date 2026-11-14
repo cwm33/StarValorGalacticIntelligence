@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { clearRecentSaves, forgetSave, listRecentSaves, rememberSave, type RecentSave } from './recentSaves'
 
 type NameResolution = { rawId: number, category: string, name: string | null, status: string, source: string | null, displayName: string }
 type Catalog = {
@@ -19,6 +20,9 @@ const hasInfo = ref(false)
 const spoilers = ref(false)
 const error = ref('')
 const busy = ref(false)
+const recent = ref<RecentSave[]>([])
+const historyError = ref('')
+onMounted(() => updateHistory(() => Promise.resolve()))
 const showIds = ref(false)
 const diagnosticsOpen = ref(false)
 const diagnostics = ref<Diagnostics>()
@@ -94,24 +98,51 @@ async function run(action: () => Promise<void>) {
   catch (failure) { error.value = String(failure instanceof Error ? failure.message : failure) }
   finally { busy.value = false }
 }
+async function updateHistory(change: () => Promise<unknown>) {
+  historyError.value = ''
+  try {
+    await change()
+    recent.value = await listRecentSaves()
+  } catch {
+    historyError.value = 'Recent saves could not be updated. Check your browser storage settings or available space.'
+  }
+}
 async function upload(event: SubmitEvent) {
   const data = new FormData(event.currentTarget as HTMLFormElement)
-  if (!(data.get('info') as File | null)?.size) data.delete('info')
-  await run(async () => {
-    const response = await api<{ id: string, view: View, hasInfo: boolean }>('/api/import', {
-      method: 'POST', body: data, headers: { 'X-Star-Valor': 'import' },
-    })
-    id.value = response.id
-    view.value = response.view
-    hasInfo.value = response.hasInfo
-    spoilers.value = false
-    schema.value = false
-    detail.value = undefined
-    source.value = 'main'
-    table.value = Object.keys(response.view.tables)[0] ?? ''
-    query.value = ''
-    page.value = 0
+  const save = data.get('save')
+  if (!(save instanceof File)) return
+  const companion = data.get('info')
+  const info = companion instanceof File && companion.name ? companion : undefined
+  const mechanics = String(data.get('mechanics') ?? 'Unknown')
+  const keep = data.has('remember')
+  const key = JSON.stringify([save.name, save.size, save.lastModified, info?.name, info?.size, info?.lastModified])
+  await run(() => importSave({ key, save, info, mechanics, openedAt: Date.now() }, keep))
+}
+async function reopen(entry: RecentSave) {
+  await run(() => importSave(entry, true))
+}
+async function importSave(entry: RecentSave, keep: boolean) {
+  const body = new FormData()
+  body.set('save', entry.save)
+  if (entry.info) body.set('info', entry.info)
+  body.set('mechanics', entry.mechanics)
+  const response = await api<{ id: string, view: View, hasInfo: boolean }>('/api/import', {
+    method: 'POST', body, headers: { 'X-Star-Valor': 'import' },
   })
+  id.value = response.id
+  view.value = response.view
+  hasInfo.value = response.hasInfo
+  spoilers.value = false
+  schema.value = false
+  detail.value = undefined
+  source.value = 'main'
+  table.value = Object.keys(response.view.tables)[0] ?? ''
+  query.value = ''
+  page.value = 0
+  const player = response.view.metadata.player
+  if (keep) await updateHistory(() => rememberSave({
+    ...entry, openedAt: Date.now(), player: typeof player === 'string' ? player : undefined,
+  }))
 }
 async function toggle(event: Event) {
   const checkbox = event.target as HTMLInputElement
@@ -159,7 +190,32 @@ async function openRecord(number: number, nextPage = 0) {
       <label class="grid gap-1 text-sm">Companion Info (optional) <input name="info" type="file" accept=".dat"></label>
       <label class="grid gap-1 text-sm">Mechanics profile <select name="mechanics"><option>Unknown</option><option>Vanilla</option><option>Galaxy Reforged</option></select></label>
       <button :disabled="busy" type="submit">Import save</button>
+      <label class="flex w-full items-center gap-2 text-sm">
+        <input name="remember" type="checkbox" checked> Keep a browser copy for quick loading
+      </label>
     </form>
+    <section v-if="recent.length" aria-labelledby="recent-saves" class="space-y-3 rounded border border-slate-700 p-4">
+      <div class="flex items-center justify-between gap-3">
+        <h2 id="recent-saves" class="font-semibold">Recent saves</h2>
+        <button :disabled="busy" @click="run(() => updateHistory(clearRecentSaves))">Clear history</button>
+      </div>
+      <p class="text-sm text-slate-400">Opens the last imported copy. Import the file again to load newer progress.</p>
+      <ul class="divide-y divide-slate-800">
+        <li v-for="entry in recent" :key="entry.key" class="flex flex-wrap items-center gap-2 py-2">
+          <div class="min-w-0 flex-1 break-words">
+            <p>{{ entry.player ? entry.player + ' · ' : '' }}{{ entry.save.name }}</p>
+            <p class="text-sm text-slate-400">
+              {{ entry.mechanics }} · {{ new Date(entry.openedAt).toLocaleString() }}
+              <span v-if="entry.info"> · Companion Info</span>
+            </p>
+          </div>
+          <button :disabled="busy" @click="reopen(entry)">Quick load</button>
+          <button :disabled="busy" :aria-label="'Remove ' + entry.save.name + ' from history'"
+            @click="run(() => updateHistory(() => forgetSave(entry.key)))">Remove</button>
+        </li>
+      </ul>
+    </section>
+    <p v-if="historyError" role="status" class="text-amber-300">{{ historyError }}</p>
     <p v-if="busy" role="status" class="text-cyan-300">Loading…</p>
     <p v-if="error" role="alert" class="text-red-300">{{ error }}</p>
     <div class="flex flex-wrap items-center gap-4">

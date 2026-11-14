@@ -1,7 +1,7 @@
 # Project guidance
 
 - `src/Decoder` contains the standalone .NET 10 NRBF graph reader and evidence-based projections. Keep it independent of ASP.NET Core and the browser.
-- `src/Api` exposes the loopback-only import, view, schema, and export endpoints. Keep the application local and imports transient.
+- `src/Api` exposes the loopback-only import, view, schema, and export endpoints. Keep the application local and server imports transient. Recent saves are bounded browser-local copies managed by the user.
 - `frontend` contains Vue 3, TypeScript, Vite, and Tailwind. The production build goes to `src/Api/wwwroot`.
 - `tests/Regression` runs synthetic checks and accepts private main/Info pairs by path. Keep real saves and exports outside version control.
 
