@@ -13,16 +13,16 @@ SaveView Fixture()
     v.Metadata["savedVersion"] = 2.251f;
     v.Metadata["mechanics"] = "Galaxy Reforged";
     v.Tables["Sectors"] = [Row(("sectorIndex", 0), ("name", "Synthetic A"), ("x", 1f), ("y", 2f), ("discovered", true))];
-    v.Tables["Stations"] = [Row(("id", 101), ("sectorIndex", 0), ("discovered", true))];
+    v.Tables["Stations"] = [Row(("record", 44), ("id", 101), ("sectorIndex", 0), ("discovered", true))];
     v.Tables["Sector prices"] = [Row(("sectorIndex", 0), ("itemID", 18), ("buyingPrice", -1f), ("sellingPrice", 20f))];
     v.Tables["Codex prices"] = [Row(("stationID", 101), ("itemID", 18), ("price", 17f))];
-    v.Tables["Station stock"] = [Row(("stationID", 101), ("itemType", 3), ("itemID", 18), ("stock", 0f)), Row(("stationID", 101), ("itemType", 1), ("itemID", 18), ("stock", 4f))];
+    v.Tables["Station stock"] = [Row(("stationRecord", 44), ("stationID", 101), ("itemType", 3), ("itemID", 18), ("stock", 0f)), Row(("stationRecord", 44), ("stationID", 101), ("itemType", 1), ("itemID", 18), ("stock", 4f))];
     return v;
 }
 Test("typed projection, provenance and namespace indexes", () => {
     var s = Project(Fixture());
     Require(s.Player.Credits == 100 && s.Provenance.GameVersion == "2.251" && s.Provenance.MechanicsProfile == "Galaxy Reforged");
-    Require(s.Index.StationsBySector[0].Single().Id == 101 && s.Index.InventoryByStation[101].Count() == 2);
+    Require(s.Index.StationsBySector[0].Single().Id == 101 && s.Index.InventoryByStationRecord[44].Count() == 2);
     Require(s.Index.MarketsByCommodity[("commodity", 18)].Count() == 2);
     Require(s.Inventories.Select(i => i.Item.Namespace).Distinct().Count() == 2);
 });
@@ -64,6 +64,50 @@ Test("real projection discovery gate protects domain and raw evidence", () => {
     var full = IntelligenceProjection.Create(SaveView.Create(graph, null, "Unknown", true), "full", DateTimeOffset.UnixEpoch, true);
     Require(safe.Sectors.Count == 1 && safe.Stations.Count == 0 && full.Sectors.Count == 2 && full.Stations.Count == 1);
     Require(!System.Text.Json.JsonSerializer.Serialize(safe).Contains("SECRET"));
+});
+Test("station graph identity, duplicate game IDs and gate visibility", () => {
+    var nodes = new List<Node>();
+    Link N(string type, Dictionary<string, object?>? fields = null, params object?[] items)
+    {
+        var id = nodes.Count + 1;
+        nodes.Add(new(id, type, fields is null ? "array" : "object", fields, null, fields is null ? items : null, null));
+        return new(id);
+    }
+    var rootFields = Row(("savedVersion", 2.251f));
+    var root = N("GameDataInfo, Synthetic", rootFields);
+    var stock = N("Stock", Row(("itemType", 3), ("itemID", 18), ("stock", 7)));
+    var a = N("Station, Synthetic", Row(("id", 123), ("sectorIndex", 0), ("discovered", true), ("ownerID", 0), ("market", N("Array", null, stock))));
+    var b = N("JumpgateStation, Synthetic", Row(("id", 123), ("sectorIndex", 3), ("discovered", true), ("ownerID", 1)));
+    var known = N("JumpGate, Synthetic", Row(("discovered", true), ("connectedSector", 3)));
+    var unknown = N("JumpGate, Synthetic", Row(("discovered", false), ("connectedSector", 3)));
+    var invalid = N("JumpGate, Synthetic", Row(("discovered", true), ("connectedSector", 1)));
+    var hidden = N("JumpGate, Synthetic", Row(("discovered", true), ("connectedSector", 2)));
+    var origin = N("Sector", Row(("discovered", true), ("smallBases", N("Array", null, a)),
+        ("jumpGates", N("Array", null, known, known, unknown, invalid, hidden))));
+    rootFields["sectors"] = N("Array", null, origin, null, N("Sector", Row(("discovered", false))), N("Sector", Row(("discovered", true))));
+    rootFields["stationList"] = N("Array", null, a, b);
+    var price = N("Price", Row(("itemID", 18), ("price", 7)));
+    var trade = N("TradeRecord", Row(("stationID", 123), ("items", N("Array", null, price))));
+    var codex = N("Codex", Row(("records", N("Array", null, trade))));
+    var ally = N("PlayerFleetMember, Synthetic", Row(("crewMemberID", 5),
+        ("shipData", N("Ship", Row(("shipModelID", 12))))));
+    var npc = N("AIMercenaryCharacter, Synthetic", Row(("shipData", N("Ship", Row(("shipModelID", 13))))));
+    rootFields["character"] = N("Character", Row(("codex", codex), ("mercenaries", N("Array", null, ally, npc))));
+
+    var graph = new Graph(root.Ref, nodes);
+    var view = SaveView.Create(graph, null, "Unknown", false);
+    var snapshot = Project(view);
+    Require(snapshot.Markets.Count == 0);
+    Require(snapshot.Ships.Single().Model?.Id == 12 && snapshot.Ships.Single().Role == "Player fleet");
+    Require(snapshot.Stations.Count == 2 && !snapshot.Index.Stations.ContainsKey(123));
+    Require(snapshot.Stations.Single(x => x.Kind == "Jumpgate").PlayerOwned == true);
+    Require(snapshot.Stations.Single(x => x.Kind == "Station").PlayerOwned == false);
+    Require(snapshot.Inventories.Single().StationRecord == a.Ref && snapshot.Inventories.Single().SectorId == 0);
+    Require(snapshot.Connections.Single().To == 3 && snapshot.Routes.Find(0, 3)!.SequenceEqual(new[] { 0, 3 }));
+    Require(snapshot.Routes.Find(3, 0) is null && snapshot.Routes.Find(0, 1) is null && snapshot.Routes.Find(0, 2) is null);
+    var full = Project(SaveView.Create(graph, null, "Unknown", true));
+    Require(full.Markets.Single().SectorId is null);
+    Require(full.Connections.Count == 3 && full.Routes.Find(0, 2) is not null);
 });
 TradeQuote Quote(string location, double? buy = null, double? sell = null, bool verified = true, double? stock = 10, double? demand = 10,
     bool? access = true, bool? hostile = false, string ns = "commodity", string source = "Synthetic transaction") =>

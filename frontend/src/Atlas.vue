@@ -4,6 +4,26 @@ import { label, number, sectorLabel, type Snapshot, type Sector } from './intell
 const props = defineProps<{ snapshot: Snapshot }>()
 const query = ref(''), discovery = ref('all'), marketsOnly = ref(false)
 const faction = ref(''), selected = ref<number | null>(null)
+const destination = ref<number | null>(null)
+const route = ref<{ path: number[] | null; jumps: number | null }>()
+const routeError = ref(false)
+watch([selected, destination, () => props.snapshot], async ([from, to, snapshot], _, cleanup) => {
+  route.value = undefined
+  routeError.value = false
+  if (from == null || to == null) return
+  const controller = new AbortController()
+  cleanup(() => controller.abort())
+  const base = '/api/' + snapshot.provenance.snapshotId + '/route'
+  const query = new URLSearchParams({ from: String(from), to: String(to), spoilers: String(snapshot.provenance.includesSpoilers) })
+  try {
+    const response = await fetch(base + '?' + query, { signal: controller.signal })
+    if (!response.ok) throw new Error('Route request failed')
+    const result = await response.json()
+    if (!controller.signal.aborted) route.value = result
+  } catch {
+    if (!controller.signal.aborted) routeError.value = true
+  }
+})
 const zoom = ref(1), pan = ref({ x: 0, y: 0 })
 let drag: { x: number; y: number; px: number; py: number; sector: number | null } | undefined
 let moved = false
@@ -32,11 +52,26 @@ function point(s: Sector) {
 const plotted = computed(() => filtered.value.filter(s => s.x != null && s.y != null).map(s => ({ s, ...point(s) })))
 const current = computed(() => props.snapshot.sectors.find(s => s.id === selected.value))
 const sectorStations = computed(() => selected.value == null ? [] : stationsBySector.value.get(selected.value) ?? [])
+const exits = computed(() => [...new Set(props.snapshot.connections.filter(c => c.from === selected.value).map(c => c.to))])
+const stationStockCounts = computed(() => {
+  const counts = new Map<number, number>()
+  for (const row of props.snapshot.inventories) {
+    if (row.stationRecord != null) counts.set(row.stationRecord, (counts.get(row.stationRecord) ?? 0) + 1)
+  }
+  return counts
+})
+function sectorName(id: number) {
+  const sector = props.snapshot.sectors.find(s => s.id === id)
+  return sector ? sectorLabel(sector) : 'Sector #' + id
+}
 const knownLinks = computed(() => {
   const sectors = new Map(filtered.value.map(s => [s.id, s]))
-  return props.snapshot.connections.filter(c => c.confidence === 'Verified').flatMap(c => {
+  const edges = new Map(props.snapshot.connections.filter(c => c.confidence === 'Verified').map(c => [c.from + ':' + c.to, c]))
+  return [...edges.values()].flatMap(c => {
+    const reciprocal = edges.has(c.to + ':' + c.from)
+    if (reciprocal && c.from > c.to) return []
     const a = sectors.get(c.from), b = sectors.get(c.to)
-    return a?.x != null && a.y != null && b?.x != null && b.y != null ? [{ a: point(a), b: point(b), key: `${c.from}:${c.to}` }] : []
+    return a?.x != null && a.y != null && b?.x != null && b.y != null ? [{ a: point(a), b: point(b), key: c.from + ":" + c.to, reciprocal }] : []
   })
 })
 function reset() { zoom.value = 1; pan.value = { x: 0, y: 0 } }
@@ -48,7 +83,7 @@ function move(e: PointerEvent) {
   pan.value = { x: drag.px + (e.clientX - drag.x) * 1000 / box.width, y: drag.py + (e.clientY - drag.y) * 600 / box.height }
 }
 function end() { if (!moved && drag?.sector != null) selected.value = drag.sector; drag = undefined }
-watch(() => props.snapshot, () => { selected.value = null; reset() })
+watch(() => props.snapshot, () => { selected.value = null; destination.value = null; reset() })
 </script>
 <template>
   <section class="space-y-4">
@@ -63,8 +98,9 @@ watch(() => props.snapshot, () => { selected.value = null; reset() })
       <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-3">
         <div class="flex gap-2"><button aria-label="Zoom in" @click="zoom = Math.min(12, zoom * 1.4)">+</button><button aria-label="Zoom out" @click="zoom = Math.max(.5, zoom / 1.4)">−</button><button @click="reset">Reset map</button><span class="self-center text-sm text-slate-400">Drag to pan · {{ zoom.toFixed(1) }}×</span></div>
         <svg class="mt-3 aspect-[5/3] w-full touch-none rounded bg-slate-950" viewBox="0 0 1000 600" role="img" aria-label="Galactic sector map" @wheel.prevent="zoom = Math.min(12, Math.max(.5, zoom * ($event.deltaY > 0 ? .9 : 1.1)))" @pointerdown="start" @pointermove="move" @pointerup="end" @pointercancel="drag = undefined">
+          <defs><marker id="gate-direction" viewBox="0 0 10 10" refX="15" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" /></marker></defs>
           <g :transform="`translate(${pan.x} ${pan.y}) translate(500 300) scale(${zoom}) translate(-500 -300)`">
-            <line v-for="c in knownLinks" :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" stroke="#475569" :stroke-width="1 / zoom" />
+            <line v-for="c in knownLinks" :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" stroke="#64748b" :marker-end="c.reciprocal ? undefined : 'url(#gate-direction)'" :stroke-width="1 / zoom" />
             <g v-for="p in plotted" :key="p.s.id" :data-sector="p.s.id">
               <title>{{ sectorLabel(p.s) }} · Level {{ number(p.s.level) }} · {{ stationsBySector.get(p.s.id)?.length ?? 0 }} observed stations</title>
               <circle :cx="p.x" :cy="p.y" :r="(selected === p.s.id ? 8 : 5) / Math.sqrt(zoom)" :fill="p.s.discovered === true ? (marketSectors.has(p.s.id) ? '#22d3ee' : '#94a3b8') : p.s.spotted === true ? 'transparent' : '#334155'" :stroke="selected === p.s.id ? '#fbbf24' : '#94a3b8'" :stroke-width="1.5 / zoom" class="cursor-pointer" />
@@ -80,12 +116,16 @@ watch(() => props.snapshot, () => { selected.value = null; reset() })
           <h3 class="text-xl font-semibold">{{ sectorLabel(current) }}</h3>
           <p class="text-slate-400">Sector #{{ current.id }} · ({{ number(current.x) }}, {{ number(current.y) }})</p>
           <p>Level {{ number(current.level) }} · Population {{ number(current.population) }}</p>
-          <p>Threat: unknown · Verified jump connections: {{ snapshot.connections.filter(c => c.from === current!.id || c.to === current!.id).length || 'unknown' }}</p>
-          <h4 class="font-semibold">{{ sectorStations.length }} observed stations</h4>
+          <p>Saved gate exits · {{ exits.length ? exits.map(sectorName).join(', ') : 'None visible' }}</p>
+          <label class="grid gap-1 text-sm">Gate route destination<select v-model="destination"><option :value="null">Choose destination</option><option v-for="s in snapshot.sectors.filter(s => s.id !== current!.id)" :key="s.id" :value="s.id">{{ sectorLabel(s) }} #{{ s.id }}</option></select></label>
+          <p v-if="route?.path" class="text-sm text-cyan-200">{{ route.jumps }} gate jumps · {{ route.path.map(sectorName).join(' → ') }}</p>
+          <p v-else-if="route" class="text-sm text-slate-400">No path through visible generated gates.</p>
+          <p v-if="routeError" role="alert">Gate route unavailable.</p>
+          <h4 class="font-semibold">{{ sectorStations.length }} observed station records</h4>
           <p v-if="!sectorStations.length" class="text-slate-400">No station records in this view. Services remain unknown.</p>
-          <div v-for="s in sectorStations" :key="s.id" class="rounded border border-slate-800 p-3 text-sm">
-            <p>Station #{{ s.id }} · {{ label(s.faction) }}</p><p class="text-slate-400">Model {{ number(s.modelId) }} · Plan {{ number(s.buildingPlanId) }} · Level {{ number(s.level) }}</p>
-            <p>{{ snapshot.inventories.filter(i => i.stationId === s.id).length }} inventory observations</p>
+          <div v-for="s in sectorStations" :key="s.evidence.graphRecord ?? s.id" class="rounded border border-slate-800 p-3 text-sm">
+            <p>{{ s.kind === 'Jumpgate' ? 'Jumpgate' : 'Station' }} #{{ s.id }} · {{ label(s.faction) }}<span v-if="s.playerOwned"> · Player-owned</span></p><p class="text-slate-400">Model {{ number(s.modelId) }} · Plan {{ number(s.buildingPlanId) }} · Level {{ number(s.level) }}</p>
+            <p>{{ stationStockCounts.get(s.evidence.graphRecord ?? -1) ?? 0 }} inventory observations</p>
           </div>
           <p class="text-xs text-slate-400">Source: {{ current.evidence.source }} · {{ current.evidence.confidence }} · {{ snapshot.provenance.gameVersion ?? 'Unknown version' }}</p>
         </template><p v-else class="text-slate-400">Select a sector to inspect its observed stations, markets and location.</p>

@@ -17,34 +17,57 @@ public static class IntelligenceProjection
             var name = row.GetValueOrDefault(field + "Resolution") as CatalogName;
             return new(ns, value, name?.Name, name?.Status ?? "Unknown", name?.Source);
         }
+        Identity? StockItem(Dictionary<string, object?> row) => Id(row, "itemID", Int(row, "itemType") switch
+        {
+            1 => "weapon", 2 => "equipment", 3 => "commodity", 4 => "ship-model", 5 => "crew",
+            int n => $"item-type-{n}", _ => "unknown-item-type"
+        });
+        var m = view.Metadata;
+        var version = Text(m, "savedVersion");
+        var profile = Text(m, "mechanics") ?? "Unknown";
+        var verifiedLayout = profile is "Vanilla" or "Unknown";
         var sectors = Rows("Sectors").Where(r => Int(r, "sectorIndex").HasValue).Select(r => new Sector(
             Int(r, "sectorIndex")!.Value, Text(r, "name"), Number(r, "x"), Number(r, "y"), Int(r, "level"),
             Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r))).ToArray();
         var stations = Rows("Stations").Where(r => Int(r, "id").HasValue && Int(r, "sectorIndex").HasValue)
             .Select(r => new Station(Int(r, "id")!.Value, Int(r, "sectorIndex")!.Value, Id(r, "factionIndex", "faction"),
-                Int(r, "modelIndex"), Int(r, "buildingPlanID"), Bool(r, "discovered"), Int(r, "level"), Source("Stations", r))).ToArray();
-        var stationIndex = stations.GroupBy(s => s.Id).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single());
+                Int(r, "modelIndex"), Int(r, "buildingPlanID"), Bool(r, "discovered"), Int(r, "level"), Source("Stations", r),
+                Text(r, "type") == "JumpgateStation" ? "Jumpgate" : Text(r, "type") ?? "Station",
+                verifiedLayout && version == "2.251" && Int(r, "ownerID") is int owner ? owner == 1 : null)).ToArray();
+        var stationRecords = stations.Where(station => station.Evidence.GraphRecord.HasValue)
+            .ToDictionary(station => station.Evidence.GraphRecord!.Value);
+        var sectorIds = sectors.Select(sector => sector.Id).ToHashSet();
+        var gates = Rows("Generated jumpgates")
+            .Where(r => verifiedLayout && version is "2.05" or "2.251" &&
+                Int(r, "sectorIndex") is int from && Int(r, "connectedSector") is int to &&
+                from != to && sectorIds.Contains(from) && sectorIds.Contains(to))
+            .Select(r => new JumpConnection(Int(r, "sectorIndex")!.Value, Int(r, "connectedSector")!.Value,
+                "Verified", Source("Generated jumpgates", r))).ToArray();
+        var stationIndex = stations.Where(s => s.Id >= 0).GroupBy(s => s.Id).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single());
         var markets = new List<MarketObservation>();
         foreach (var table in new[] { "Sector prices", "Codex prices" })
         foreach (var r in Rows(table))
         {
             if (Id(r, "itemID", "commodity") is not { } commodity) continue;
             var stationId = Int(r, "stationID");
-            var sectorId = Int(r, "sectorIndex") ?? (stationId.HasValue && stationIndex.TryGetValue(stationId.Value, out var station) ? station.SectorId : (int?)null);
+            var sectorId = Int(r, "sectorIndex") ?? (Bool(r, "uniqueStationID") != false && stationId.HasValue && stationIndex.TryGetValue(stationId.Value, out var station) ? station.SectorId : (int?)null);
             markets.Add(new(commodity, table, sectorId, stationId, Number(r, "buyingPrice"), Number(r, "sellingPrice"),
                 Number(r, "tradePrice"), Number(r, "price"), Bool(r, "IsBuyingOverstocked"), Bool(r, "IsResourceStarved"),
-                Bool(r, "IsTrading"), Bool(r, "IsTradingOverstocked"), Source(table, r)));
+                Bool(r, "IsTrading"), Bool(r, "IsTradingOverstocked"), Source(table, r), table == "Sector prices" && verifiedLayout && version == "2.251"
+                    ? "Sector summary: station buy/sell direction verified; transaction terms unverified" : "Unverified"));
         }
         var inventory = new List<Inventory>();
         foreach (var table in new[] { "Station stock", "Station market modules" })
         foreach (var r in Rows(table))
         {
-            var ns = Int(r, "itemType") switch { 1 => "weapon", 2 => "equipment", 3 => "commodity", 4 => "ship-model", 5 => "crew", int n => $"item-type-{n}", _ => "unknown-item-type" };
-            if (Id(r, "itemID", ns) is { } item && Int(r, "stationID") is int station)
-                inventory.Add(new(item, station, Text(r, "sourceField") == "market" ? "Legacy station market" : table, Number(r, "stock"), Number(r, "lastStockCount"), Int(r, "rarity"), Source(table, r)));
+            var stationRecord = Int(r, "stationRecord");
+            if (StockItem(r) is { } item && Int(r, "stationID") is int station)
+                inventory.Add(new(item, station, Text(r, "sourceField") == "market" ? "Legacy station market" : table,
+                    Number(r, "stock"), Number(r, "lastStockCount"), Int(r, "rarity"), Source(table, r), stationRecord,
+                    stationRecord is int record && stationRecords.TryGetValue(record, out var owner) ? owner.SectorId : null));
         }
         var ships = new List<Ship>();
-        foreach (var table in new[] { "Player ship", "Sector ships" })
+        foreach (var table in new[] { "Player ship", "Player fleet", "Sector ships" })
         foreach (var r in Rows(table))
             ships.Add(new(Id(r, "shipModelID", "ship-model"), table, Int(r, "sectorIndex"), Id(r, "factionIndex", "faction"), Source(table, r)));
         var installed = new List<InstalledItem>();
@@ -55,14 +78,19 @@ public static class IntelligenceProjection
         var relations = Rows("Faction relations").Where(r => Int(r, "ID1").HasValue && Int(r, "ID2").HasValue)
             .Select(r => new FactionRelation(Int(r, "ID1")!.Value, Int(r, "ID2")!.Value, Number(r, "value"), Source("Faction relations", r))).ToArray();
         var warnings = view.Warnings.Concat(new[] {
-            "Prices are saved observations with unverified direction and freshness; inventories are separate sources, not executable offers.",
-            "Jump links, station ownership, faction access, threat, cargo capacity and production recipes have no validated extraction yet.",
+            "Modern base-game sector price direction is established. Freshness, live stock, access and transaction prices require gameplay confirmation.",
+            "Routes use saved generated gate topology. Player-built links, activation, direct warp, faction access, cargo capacity and recipes are outside the route and trade models.",
             "Relation endpoints are preserved separately from faction display indexes; no hostility is inferred." }).ToList();
         if (stations.GroupBy(s => s.Id).Any(g => g.Count() > 1)) warnings.Add("Duplicate station IDs excluded from location joins.");
-        var m = view.Metadata;
-        return new(new(snapshotId, importedAt, Text(m, "savedVersion"), Text(m, "mechanics") ?? "Unknown", Bool(m, "baseBuilding"), spoilers),
-            new(Text(m, "player"), Number(m, "credits"), Int(m, "level"), Id(m, "shipModelID", "ship-model")),
-            sectors, stations, markets, inventory, ships, installed, relations, [], warnings);
+        return new(new(snapshotId, importedAt, version, profile, Bool(m, "baseBuilding"), spoilers),
+            new(Text(m, "player"), Number(m, "credits"), Int(m, "level"), Id(m, "shipModelID", "ship-model"), Int(m, "fleetCommander")),
+            sectors, stations, markets, inventory, ships, installed, relations, gates, warnings)
+        {
+            Cargo = Rows("Player cargo").Select(r => (Row: r, Item: StockItem(r)))
+                .Where(entry => entry.Item is not null)
+                .Select(entry => new CargoItem(entry.Item!, Number(entry.Row, "qnt"), Int(entry.Row, "rarity"), Text(entry.Row, "storageKind") ?? "Unknown", Source("Player cargo", entry.Row)))
+                .ToArray()
+        };
     }
     static string? Text(Dictionary<string, object?> row, string key) => row.GetValueOrDefault(key) is { } value ? Convert.ToString(value, CultureInfo.InvariantCulture) : null;
     static bool? Bool(Dictionary<string, object?> row, string key) => row.GetValueOrDefault(key) as bool?;

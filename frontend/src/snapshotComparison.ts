@@ -24,16 +24,16 @@ export function compareSnapshots(before: Snapshot, after: Snapshot): Comparison 
     for (const k of duplicate) index.delete(k)
     return index
   }
-  const stationsBefore = unique(before.stations, s => String(s.id)), stationsAfter = unique(after.stations, s => String(s.id))
+  const stationsBefore = unique(before.stations.filter(s => s.id >= 0), s => String(s.id)), stationsAfter = unique(after.stations.filter(s => s.id >= 0), s => String(s.id))
   for (const id of stationsAfter.keys()) if (!stationsBefore.has(id) && !before.stations.some(s => String(s.id) === id))
     add('Station observation', `station:${id}`, null, 'Observed')
   function matched<T>(category: string, a: T[], b: T[], key: (row: T) => string, value: (row: T) => number | string | null) {
     const left = unique(a, key), right = unique(b, key)
     for (const [id, row] of right) if (left.has(id)) add(category, id, value(left.get(id)!), value(row))
   }
-  matched('Codex price', before.markets.filter(m => m.source === 'Codex prices' && m.stationId != null), after.markets.filter(m => m.source === 'Codex prices' && m.stationId != null),
+  matched('Codex price', before.markets.filter(m => m.source === 'Codex prices' && m.stationId != null && stationsBefore.has(String(m.stationId))), after.markets.filter(m => m.source === 'Codex prices' && m.stationId != null && stationsAfter.has(String(m.stationId))),
     m => `${m.source}:station:${m.stationId}:${itemKey(m.commodity)}`, m => m.codexPrice)
-  matched('Inventory stock', before.inventories, after.inventories, i => `${i.source}:station:${i.stationId}:${itemKey(i.item)}:rarity:${i.rarity ?? 'unknown'}`, i => i.stock)
+  matched('Inventory stock', before.inventories.filter(i => stationsBefore.has(String(i.stationId))), after.inventories.filter(i => stationsAfter.has(String(i.stationId))), i => `${i.source}:station:${i.stationId}:${itemKey(i.item)}:rarity:${i.rarity ?? 'unknown'}`, i => i.stock)
   matched('Faction relationship', before.relations, after.relations, r => `${r.from}:${r.to}`, r => r.value)
   // Compare weapon slots only when explicitly identifiable. Equipment quantities are aggregated only if every quantity is known.
   matched('Installed weapon slot', before.installedItems.filter(i => i.kind === 'weapon' && i.slot != null), after.installedItems.filter(i => i.kind === 'weapon' && i.slot != null), i => `slot:${i.slot}`, i => itemKey(i.item))

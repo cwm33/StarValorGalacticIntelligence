@@ -149,6 +149,7 @@ sealed class GameDataCatalog
                 case "Codex prices":
                     AddName(row, "itemID", IdentifierCategory.Commodity);
                     break;
+                case "Player cargo":
                 case "Station stock":
                 case "Station market modules":
                     AddName(row, "itemID", row.GetValueOrDefault("itemType") switch
@@ -163,6 +164,7 @@ sealed class GameDataCatalog
                     });
                     break;
                 case "Player ship":
+                case "Player fleet":
                 case "Sector ships":
                     AddName(row, "shipModelID", IdentifierCategory.ShipModel);
                     AddName(row, "factionIndex", Faction);

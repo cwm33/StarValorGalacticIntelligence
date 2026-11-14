@@ -7,11 +7,9 @@ public static class HomeAdvisor
     public static IReadOnlyList<HomeCandidate> Rank(GalaxySnapshot snapshot, AdvisorWeights weights)
     {
         var marketCounts = snapshot.Markets.Where(m => m.SectorId.HasValue).GroupBy(m => m.SectorId!.Value).ToDictionary(g => g.Key, g => g.Count());
-        var links = snapshot.Connections.Where(c => c.Confidence == "Verified").SelectMany(c => new[] { (c.From, c.To), (c.To, c.From) })
-            .Distinct().ToLookup(c => c.Item1);
         return snapshot.Sectors.Select(sector => {
-            var stations = snapshot.Index.StationsBySector[sector.Id].ToArray();
-            var inventory = stations.SelectMany(s => snapshot.Index.InventoryByStation[s.Id]).ToArray();
+            var stations = snapshot.Index.StationsBySector[sector.Id].Where(s => s.Kind != "Jumpgate").ToArray();
+            var inventory = stations.Where(s => s.Evidence.GraphRecord.HasValue).SelectMany(s => snapshot.Index.InventoryByStationRecord[s.Evidence.GraphRecord!.Value]).ToArray();
             var reasons = new List<ScoreReason>();
             void Observed(string criterion, double weight, int count, int saturation, string reason) =>
                 reasons.Add(new(criterion, double.IsFinite(weight) ? Math.Clamp(weight, 0, 10) : 0,
@@ -20,7 +18,7 @@ public static class HomeAdvisor
             Observed("Market evidence", weights.Markets, marketCounts.GetValueOrDefault(sector.Id), 10, "Observed price records; not a verified measure of turnover. 10 records saturate this preference.");
             Observed("Equipment availability", weights.Equipment, inventory.Where(i => i.Item.Namespace == "equipment" && i.Stock > 0).Select(i => i.Item.Id).Distinct().Count(), 5, "Distinct equipment IDs with positive saved stock; purchase access unverified. 5 IDs saturate.");
             Observed("Ship availability", weights.Ships, inventory.Where(i => i.Item.Namespace == "ship-model" && i.Stock > 0).Select(i => i.Item.Id).Distinct().Count(), 3, "Distinct ship models with positive saved stock. 3 models saturate.");
-            Observed("Known connectivity", weights.Connectivity, links[sector.Id].Count(), 4, "Verified explicit jump connections only. 4 links saturate.");
+            Observed("Known connectivity", weights.Connectivity, snapshot.Routes.Reach(sector.Id, 2).Count(step => step.Jumps > 0), 4, "Sectors reachable within two saved gate jumps. 4 destinations saturate.");
             foreach (var unknown in new[] { "Technology level", "Friendly faction presence", "Neighbor commerce", "Resources and industrial potential", "Threat and faction access" })
                 reasons.Add(new(unknown, 0, null, "Unknown: no validated interpretation or extraction."));
             var totalWeight = reasons.Sum(r => r.Weight);

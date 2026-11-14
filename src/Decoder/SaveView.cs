@@ -18,7 +18,7 @@ public sealed class SaveView
             value is Link link && source.Resolve(link) is { Kind: "primitive" } primitive ? primitive.Value : value;
         object? Field(Node? node, string name) => Scalar(graph, node?.Fields?.GetValueOrDefault(name));
         Node? Child(Node? node, string name) => Field(node, name) is Link link ? graph.Resolve(link) : null;
-        IEnumerable<Node> List(Node? node)
+        IEnumerable<Node?> Slots(Node? node)
         {
             var items = node?.Items ?? Child(node, "_items")?.Items;
             if (items is null) yield break;
@@ -26,8 +26,9 @@ public sealed class SaveView
             if (size < 0 || size > items.Length)
                 throw new InvalidDataException("Invalid serialized list size.");
             for (var i = 0; i < size; i++)
-                if (items[i] is Link link) yield return graph.Resolve(link);
+                yield return items[i] is Link link ? graph.Resolve(link) : null;
         }
+        IEnumerable<Node> List(Node? node) => Slots(node).OfType<Node>();
         void Add(string table, Node node, string fields, params (string Key, object? Value)[] context)
         {
             if (!result.Tables.TryGetValue(table, out var rows))
@@ -67,14 +68,29 @@ public sealed class SaveView
         result.Metadata["marketLayout"] = root.Fields.ContainsKey("galacticMarket") ? "Sector prices and station stock" : "Legacy codex prices and station market";
         if (System.Convert.ToString(version, System.Globalization.CultureInfo.InvariantCulture) is not ("2.05" or "2.251"))
             result.Warnings.Add("This game version has not been validated. Inspect the raw records if fields are missing.");
+        result.Metadata["fleetCommander"] = Field(character, "fleetCommander");
         if (playerShip is not null)
         {
             Add("Player ship", playerShip, "shipModelID HPstatus energyStatus shieldStatus");
+            foreach (var item in List(Child(playerShip, "cargo")))
+                Add("Player cargo", item, "itemType itemID rarity qnt shipLoadoutID",
+                    ("storageKind", Field(item, "stockStationID") switch
+                    {
+                        -1 => "Aboard",
+                        int id when id >= 0 => "Station storage",
+                        int => "Other storage",
+                        _ => "Unknown"
+                    }));
             foreach (var weapon in List(Child(playerShip, "weapons")))
                 Add("Installed weapons", weapon, "weaponIndex slotIndex rarity");
             foreach (var equipment in List(Child(playerShip, "equipments")))
                 Add("Installed equipment", equipment, "equipmentID rarity qnt");
         }
+
+        foreach (var member in List(Child(character, "mercenaries")).DistinctBy(node => node.Id))
+            if (member.Type.StartsWith("PlayerFleetMember,", StringComparison.Ordinal) && Child(member, "shipData") is { } ship)
+                Add("Player fleet", ship, "shipModelID HPstatus energyStatus shieldStatus",
+                    ("memberRecord", member.Id), ("crewMemberID", Field(member, "crewMemberID")), ("hangarDocked", Field(member, "hangarDocked")));
 
         var weapons = Child(root, "weaponList");
         var weaponItems = Child(weapons, "_items")?.Items;
@@ -93,10 +109,10 @@ public sealed class SaveView
             result.WeaponNames = names;
         }
         var visible = new HashSet<int>();
-        var sectors = List(Child(root, "sectors")).ToArray();
+        var sectors = Slots(Child(root, "sectors")).ToArray();
         for (var index = 0; index < sectors.Length; index++)
         {
-            var sector = sectors[index];
+            if (sectors[index] is not { } sector) continue;
             if (Field(sector, "discovered") is not true)
             {
                 result.HiddenSectors++;
@@ -110,30 +126,45 @@ public sealed class SaveView
                 if (Child(actor, "shipData") is { } ship)
                     Add("Sector ships", ship, "shipModelID", ("sectorIndex", index), ("factionIndex", Field(actor, "factionIndex")));
         }
-        var stations = List(Child(root, "stationList"))
-            .Concat(sectors.SelectMany(sector => List(Child(sector, "smallBases")))).DistinctBy(node => node.Id);
+        foreach (var index in visible.Order())
+            foreach (var gate in List(Child(sectors[index], "jumpGates")).DistinctBy(gate => gate.Id))
+            {
+                if (!gate.Type.StartsWith("JumpGate,", StringComparison.Ordinal) ||
+                    (!spoilers && (Field(gate, "discovered") is not true ||
+                        Field(gate, "connectedSector") is not int destination || !visible.Contains(destination))))
+                    continue;
+                Add("Generated jumpgates", gate, "x y yRotation discovered connectedSector", ("sectorIndex", index));
+            }
+
+        var registered = List(Child(root, "stationList")).DistinctBy(node => node.Id).ToDictionary(node => node.Id);
+        var local = sectors.SelectMany(sector => List(Child(sector, "smallBases"))).DistinctBy(node => node.Id).ToDictionary(node => node.Id);
+        var stations = registered.Values.Concat(local.Values).DistinctBy(node => node.Id).ToArray();
+        // Codex has only a game ID. Check ambiguity before applying discovery filtering.
+        var uniqueIds = stations.Select(station => Field(station, "id")).OfType<int>()
+            .Where(id => id >= 0).GroupBy(id => id).Where(group => group.Count() == 1).Select(group => group.Key).ToHashSet();
         var stationIds = new HashSet<int>();
         foreach (var station in stations)
         {
             if (!spoilers && (Field(station, "discovered") is not true ||
                 Field(station, "sectorIndex") is not int sectorIndex || !visible.Contains(sectorIndex))) continue;
             var id = Field(station, "id");
-            if (id is int number) stationIds.Add(number);
-            Add("Stations", station, "id factionIndex modelIndex nameIndex sectorIndex discovered level buildingPlanID buildingState");
+            if (id is int number && uniqueIds.Contains(number)) stationIds.Add(number);
+            Add("Stations", station, "id factionIndex modelIndex nameIndex sectorIndex discovered level buildingPlanID buildingState ownerID state",
+                ("inStationList", registered.ContainsKey(station.Id)), ("inSmallBases", local.ContainsKey(station.Id)));
             foreach (var item in List(Child(station, "market")))
-                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "market"));
+                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("stationRecord", station.Id), ("sourceField", "market"));
             foreach (var item in List(Child(Child(station, "itemStock"), "items")))
-                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "itemStock.items"));
+                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("stationRecord", station.Id), ("sourceField", "itemStock.items"));
             foreach (var module in List(Child(station, "modules")))
                 foreach (var item in List(Child(module, "persistentItems")))
-                    Add("Station market modules", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "modules.persistentItems"), ("moduleRecord", module.Id));
+                    Add("Station market modules", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("stationRecord", station.Id), ("sourceField", "modules.persistentItems"), ("moduleRecord", module.Id));
         }
         foreach (var market in List(Child(Child(character, "codex"), "records")))
         {
             var station = Field(market, "stationID");
             if (!spoilers && (station is not int number || !stationIds.Contains(number))) continue;
             foreach (var item in List(Child(market, "items")))
-                Add("Codex prices", item, "itemID price", ("stationID", station));
+                Add("Codex prices", item, "itemID price", ("stationID", station), ("uniqueStationID", station is int id && uniqueIds.Contains(id)));
         }
         foreach (var faction in List(Child(Child(root, "relations"), "relation")))
             Add("Faction relations", faction, "ID1 ID2 value");

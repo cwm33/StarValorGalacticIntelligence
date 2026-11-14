@@ -43,6 +43,8 @@ def fixture(modern=True, sector_count=36, credits=1000.0):
     stations = []
     for n in range(sector_count):
         fields = dict(name=f'Synthetic Sector {n}', x=float(n % 6 * 10), y=float(n // 6 * 10), level=n % 20 + 1, discovered=n < sector_count - 6, spotted=n < sector_count - 3, population=float(n * 100))
+        if n < sector_count - 1:
+            fields['jumpGates'] = [obj('JumpGate', connectedSector=n+1, discovered=True)]
         if modern:
             fields['marketPriceControl'] = obj('MarketPriceControl', prices=[obj('ItemMarketPrice', itemID=18, buyingPrice=float(10 + n), sellingPrice=float(15 + n), tradePrice=-1.0 if n == 0 else float(12 + n), IsResourceStarved=n % 4 == 0)])
         sectors.append(obj('Sector', **fields))
@@ -53,7 +55,7 @@ def fixture(modern=True, sector_count=36, credits=1000.0):
         stations.append(obj('Station', **st))
     root = dict(savedVersion=2.251 if modern else 2.05, credits=float(credits), expansion_BaseBuilding=modern,
                 character=obj('Character', name='Synthetic Commander', level=10, codex=obj('Codex', records=[] if modern else [obj('TradeRecord', stationID=100+n, items=[obj('CodexItem', itemID=18, price=float(20+n))]) for n in range(sector_count)])),
-                spaceShipData=obj('Ship', shipModelID=55, HPstatus=95.0, weapons=[obj('Weapon', weaponIndex=0, slotIndex=1, rarity=2)], equipments=[obj('Equipment', equipmentID=29, qnt=1, rarity=1)]),
+                spaceShipData=obj('Ship', shipModelID=55, HPstatus=95.0, cargo=[obj('CargoItem', itemType=4, itemID=55, qnt=1, stockStationID=31)], weapons=[obj('Weapon', weaponIndex=0, slotIndex=1, rarity=2)], equipments=[obj('Equipment', equipmentID=29, qnt=1, rarity=1)]),
                 sectors=sectors, stationList=stations)
     if modern: root['galacticMarket'] = obj('GalacticMarket')
     value(obj('GameDataInfo', **root)); out.write(bytes([11])); return out.getvalue()
@@ -85,23 +87,30 @@ if __name__ == '__main__':
         print('Wrote synthetic fixture'); sys.exit(0)
     for modern in [False, True]:
         data = fixture(modern); before = hashlib.sha256(data).digest()
-        imported = import_fixture(data, 'Galaxy Reforged' if modern else 'Vanilla'); ident = imported['id']
+        imported = import_fixture(data, 'Vanilla'); ident = imported['id']
         safe = request(f'/api/{ident}/intelligence?spoilers=false'); full = request(f'/api/{ident}/intelligence?spoilers=true')
         assert len(safe['sectors']) == 30 and len(full['sectors']) == 36
+        assert safe['cargo'][0]['storage'] == 'Station storage' and safe['cargo'][0]['item']['namespace'] == 'ship-model'
         assert len(safe['stations']) == 30 and len(full['stations']) == 36
         assert len(safe['markets']) == 30 and len(safe['inventories']) == (150 if modern else 120)
         assert safe['markets'][0]['source'] == ('Sector prices' if modern else 'Codex prices')
-        assert safe['provenance']['includesSpoilers'] is False and safe['connections'] == []
+        assert safe['provenance']['includesSpoilers'] is False and len(safe['connections']) == 29 and len(full['connections']) == 35
         assert 'Synthetic Sector 35' not in json.dumps(safe)
-        assert safe['markets'][0]['priceSemantics'] == 'Unverified'
+        assert (safe['markets'][0]['priceSemantics'] != 'Unverified') == modern
+        assert request(f'/api/{ident}/route?from=0&to=2') == {'path': [0, 1, 2], 'jumps': 2}
+        for origin, target in [(2, 0), (29, 30), (0, 99)]:
+            assert request(f'/api/{ident}/route?from={origin}&to={target}')['path'] is None
+        assert request(f'/api/{ident}/route?spoilers=true&from=29&to=30')['jumps'] == 1
         assert safe['inventories'][0]['source'] == ('Station stock' if modern else 'Legacy station market')
         trade = request(f'/api/{ident}/trade?spoilers=false')
         assert trade['opportunities'] == []
         trial = request(f'/api/{ident}/trade?spoilers=false&experimental=true')['opportunities']
         assert bool(trial) == modern
         assert all(not r['executable'] and r['quantity'] is None and r['estimatedNetProfit'] is None for r in trial)
+        if modern:
+            assert trial[0]['costPerItem'] == 15 and trial[0]['proceedsPerItem'] == 39 and trial[0]['gateJumps'] == 29
         advisor = request(f'/api/{ident}/advisor?spoilers=false&stations=3&equipment=0')
-        assert len(advisor) == 30 and all(r['evidenceCoverage'] < 1 for r in advisor)
+        assert len(advisor) == 30 and all(0 <= r['evidenceCoverage'] <= 1 for r in advisor) and any(r['evidenceCoverage'] < 1 for r in advisor)
         scenario = {'profile': 'Galaxy Reforged', 'gameVersion': '2.251', 'recipes': [], 'orders': [], 'available': []}
         plan = request('/api/industry/plan', json.dumps(scenario).encode(), {'Content-Type': 'application/json', 'X-Star-Valor': 'scenario'})
         assert plan['resources'] == []
@@ -117,3 +126,10 @@ if __name__ == '__main__':
             except urllib.error.HTTPError as e: assert e.code == 400
         assert hashlib.sha256(data).digest() == before
         print(('Modern' if modern else 'Legacy') + ' API import, projection, discovery, resolver, exports and raw gates passed')
+
+    mod = import_fixture(fixture(True), 'Galaxy Reforged')['id']
+    snapshot = request(f'/api/{mod}/intelligence')
+    assert snapshot['provenance']['mechanicsProfile'] == 'Galaxy Reforged'
+    assert snapshot['connections'] == [] and snapshot['markets'][0]['priceSemantics'] == 'Unverified'
+    assert request(f'/api/{mod}/trade?experimental=true')['opportunities'] == []
+    print('Galaxy Reforged profile remains unverified')

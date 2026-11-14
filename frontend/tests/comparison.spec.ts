@@ -12,12 +12,18 @@ test('comparison preserves unknown and version warnings', () => {
 })
 test('comparison uses station and namespaced item IDs, never graph record IDs', () => {
   const before = snapshot(), after = snapshot()
+  const station = (graphRecord: number) => ({ id: 101, sectorId: 0, faction: null, modelId: null, buildingPlanId: null, discovered: true, level: null, evidence: { source: 'Stations', graphRecord, raw: {}, confidence: 'Extracted', note: null } })
+  before.stations = [station(3)]
+  after.stations = [station(19)]
   const stock = (ns: string, amount: number, graphRecord: number) => ({ item: { namespace: ns, id: 18, name: null, confidence: 'Unknown', nameSource: null }, stationId: 101, source: 'Station stock', stock: amount, lastStock: null, rarity: 0, evidence: { source: 'Station stock', graphRecord, raw: {}, confidence: 'Extracted', note: null } })
   before.inventories = [stock('commodity', 4, 1), stock('weapon', 7, 2)]
   after.inventories = [stock('commodity', 9, 500), stock('weapon', 7, 3)]
   const result = compareSnapshots(before, after)
   expect(result.changes).toHaveLength(1)
   expect(result.changes[0]).toMatchObject({ delta: 5, identity: 'Station stock:station:101:commodity:18:rarity:0' })
+  after.stations.push(station(20))
+  expect(compareSnapshots(before, after).changes).toHaveLength(0)
+  after.stations.pop()
   before.inventories[0]!.stock = -1
   expect(compareSnapshots(before, after).changes[0]?.delta).toBeNull()
   after.inventories.push(stock('commodity', 12, 99))

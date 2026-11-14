@@ -3,12 +3,13 @@ namespace GalacticIntelligence;
 // Transaction quotes are an extension contract. The save adapter currently emits NO verified quotes.
 public sealed record TradeQuote(Identity Commodity, string Location, double? PlayerBuyPrice, double? PlayerSellPrice,
     double? AvailableStock, double? DemandLimit, double? CargoUnitsPerItem, bool Verified, bool Fresh,
-    bool? Accessible, bool? Hostile, string Source);
+    bool? Accessible, bool? Hostile, string Source, int? SectorId = null);
 public sealed record TradeConstraints(double? Credits, double? CargoCapacity, double? ExistingCargo, double? MaximumQuantity,
     double? RouteCost = null, double? TravelEffort = null);
 public sealed record TradeOpportunity(Identity Commodity, string BuyAt, string SellAt, double CostPerItem, double ProceedsPerItem,
     double DifferencePerItem, double? Quantity, double? GrossProfit, double? EstimatedNetProfit, double? ProfitPerCargoUnit,
-    double? TravelEffort, bool Executable, IReadOnlyList<string> Warnings);
+    double? TravelEffort, bool Executable, IReadOnlyList<string> Warnings,
+    int? FromSector = null, int? ToSector = null, int? GateJumps = null);
 public static class TradeAnalyzer
 {
     private static bool Valid(double? n) => n.HasValue && double.IsFinite(n.Value) && n >= 0;
@@ -32,7 +33,7 @@ public static class TradeAnalyzer
                 if (rankBy is not ("gross" or "net" or "cargo") && results.Count == capacity && results.TryPeek(out _, out var floor) && difference <= floor) break;
                 if (buy.Location == sell.Location || buy.Source != sell.Source || sell.PlayerSellPrice <= buy.PlayerBuyPrice) continue;
                 var warnings = new List<string>();
-                if (!buy.Verified || !sell.Verified) warnings.Add("Experimental price direction; not an executable or guaranteed profit.");
+                if (!buy.Verified || !sell.Verified) warnings.Add("Indicative prices; live transaction terms are unverified.");
                 if (!buy.Fresh || !sell.Fresh) warnings.Add("Observation freshness unknown or stale.");
                 if (buy.Hostile == true || sell.Hostile == true) warnings.Add("Hostile destination or origin.");
                 if (buy.Hostile is null || sell.Hostile is null) warnings.Add("Hostility unknown.");
@@ -61,7 +62,7 @@ public static class TradeAnalyzer
                     buy.Hostile == false && sell.Hostile == false && quantity > 0 && Valid(limits.RouteCost) && Valid(limits.TravelEffort);
                 var result = new TradeOpportunity(buy.Commodity, buy.Location, sell.Location, buy.PlayerBuyPrice.Value, sell.PlayerSellPrice.Value,
                     difference, quantity, gross, net, volume > 0 && Valid(volume) ? difference / volume : null,
-                    Valid(limits.TravelEffort) ? limits.TravelEffort : null, executable, warnings);
+                    Valid(limits.TravelEffort) ? limits.TravelEffort : null, executable, warnings, buy.SectorId, sell.SectorId);
                 results.Enqueue(result, Rank(result));
                 if (results.Count > capacity) results.Dequeue();
             }

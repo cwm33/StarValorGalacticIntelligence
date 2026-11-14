@@ -73,17 +73,28 @@ app.MapPost("/api/import", async (HttpRequest request) =>
 
 app.MapGet("/api/{id:guid}/intelligence", (Guid id, bool? spoilers) =>
     Find(id) is { } s ? Results.Ok(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value) : Missing());
+app.MapGet("/api/{id:guid}/route", (Guid id, bool? spoilers, int from, int to) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
+    var path = snapshot.Routes.Find(from, to);
+    return Results.Ok(new { path, jumps = path?.Length - 1 });
+});
 app.MapGet("/api/{id:guid}/trade", (Guid id, bool? spoilers, bool? experimental, string? rankBy) =>
 {
     if (Find(id) is not { } s) return Missing();
     var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
-    // Explicit opt-in interpretation only. No inventory, cargo volume, access or routes are fabricated.
-    var quotes = snapshot.Markets.Where(m => m.Source == "Sector prices" && m.SectorId.HasValue)
-        .Select(m => new GalacticIntelligence.TradeQuote(m.Commodity, $"Sector #{m.SectorId}", m.BuyingPrice, m.SellingPrice,
-            null, null, null, false, false, null, null, m.Source)).ToArray();
-    return Results.Ok(new { interpretation = "Experimental: buyingPrice as player cost and sellingPrice as proceeds. Direction is unverified.",
+    // Base-game sector summaries provide indicative spreads only.
+    var quotes = snapshot.Markets.Where(m => m.Source == "Sector prices" && m.SectorId.HasValue && m.PriceSemantics != "Unverified")
+        .Select(m => new GalacticIntelligence.TradeQuote(m.Commodity, $"Sector #{m.SectorId}", m.SellingPrice, m.BuyingPrice,
+            null, null, null, false, false, null, null, m.Source, m.SectorId)).ToArray();
+    return Results.Ok(new { interpretation = "Indicative sector spread: sellingPrice is the player cost reference; buyingPrice is the proceeds reference.",
         opportunities = GalacticIntelligence.TradeAnalyzer.Analyze(quotes,
-            new(snapshot.Player.Credits, null, null, null), experimental == true, rankBy ?? "difference"),
+            new(snapshot.Player.Credits, null, null, null), experimental == true, rankBy ?? "difference").Select(opportunity => opportunity with
+            {
+                GateJumps = opportunity.FromSector is int from && opportunity.ToSector is int to
+                    ? snapshot.Routes.Find(from, to)?.Length - 1 : null
+            }),
         note = "Legacy codex observations have no paired price direction and are excluded. No verified transaction quotes are currently extracted." });
 });
 app.MapGet("/api/{id:guid}/advisor", (Guid id, bool? spoilers, double? stations, double? markets, double? equipment, double? ships, double? connectivity) =>

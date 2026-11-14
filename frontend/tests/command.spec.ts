@@ -42,6 +42,9 @@ test('command views, discovery gate and responsive atlas', async ({ page }) => {
   await page.screenshot({ path: 'test-results/atlas-mobile.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.getByLabel('Select a sector', { exact: false }).selectOption('0')
+  await page.getByLabel('Gate route destination').selectOption('2')
+  await expect(page.getByText('2 gate jumps', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Market Intelligence', exact: true }).click()
   await expect(page.getByText('Negative / sentinel', { exact: false })).toHaveCount(0) // sentinel explanation is in its tooltip
   await expect(page.getByText('⚠ Sentinel')).toHaveCount(1)

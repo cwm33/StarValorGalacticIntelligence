@@ -7,7 +7,7 @@ const inputs = ref<{ id: number | null; amount: number | null; available: number
 const outputs = ref<{ id: number | null; amount: number | null }[]>([])
 const station = ref(''), query = ref(''), scenario = ref(''), error = ref(''), busy = ref(false)
 const result = ref<{ resources: { item: Identity; consumed: number; produced: number; available: number | null; shortfall: number | null }[]; warnings: string[] }>()
-const stocks = computed(() => props.snapshot.inventories.filter(i => (!station.value || String(i.stationId) === station.value) && (!query.value || label(i.item).toLowerCase().includes(query.value.toLowerCase()))))
+const stocks = computed(() => props.snapshot.inventories.filter(i => (!station.value || String(i.stationRecord) === station.value) && (!query.value || label(i.item).toLowerCase().includes(query.value.toLowerCase()))))
 function emptyScenario() { return { profile: props.snapshot.provenance.mechanicsProfile, gameVersion: props.snapshot.provenance.gameVersion ?? 'Unknown', recipes: [], orders: [], available: [] } }
 function initialize() { scenario.value = JSON.stringify(emptyScenario(), null, 2); result.value = undefined; error.value = ''; station.value = ''; inputs.value = []; outputs.value = []; recipeId.value = ''; cycles.value = 1 }
 watch(() => props.snapshot, initialize, { immediate: true })
@@ -33,8 +33,12 @@ async function plan() {
 </script>
 <template>
   <section class="space-y-4">
-    <p class="text-slate-300">Inspect observed station supplies and calculate aggregate resource balances from your own recipe catalog. Station ownership, production records and resource deposits have no validated extraction. No built-in recipe data is available.</p>
-    <div class="flex flex-wrap gap-3"><select v-model="station" aria-label="Industry station"><option value="">All observed stations</option><option v-for="s in snapshot.stations" :key="s.id" :value="String(s.id)">Station #{{ s.id }} · Sector #{{ s.sectorId }}</option></select><input v-model="query" aria-label="Search industrial inventories" placeholder="Item name or ID"></div>
+    <p class="text-slate-300">Inspect observed station supplies and calculate aggregate resource balances from your own recipe catalog. Saved ownership is available for the supported modern layout. Production records, resource deposits and recipes still require local evidence.</p>
+    <div class="flex flex-wrap gap-3"><select v-model="station" aria-label="Industry station"><option value="">All observed stations</option><option v-for="s in snapshot.stations" :key="s.evidence.graphRecord ?? s.id" :value="String(s.evidence.graphRecord)">Station #{{ s.id }} · Sector #{{ s.sectorId }}</option></select><input v-model="query" aria-label="Search industrial inventories" placeholder="Item name or ID"></div>
+    <div v-if="snapshot.stations.some(s => s.playerOwned)" class="space-y-2">
+      <h3 class="font-semibold">Player-owned infrastructure</h3>
+      <ul class="list-disc pl-5"><li v-for="s in snapshot.stations.filter(s => s.playerOwned)" :key="s.evidence.graphRecord ?? s.id">{{ s.kind }} #{{ s.id }} · Sector #{{ s.sectorId }}</li></ul>
+    </div>
     <div class="max-h-80 overflow-auto"><table class="w-full text-sm"><thead><tr><th>Station</th><th>Item</th><th>Observed stock</th><th>Source</th></tr></thead><tbody><tr v-for="(i, n) in stocks" :key="n"><td>#{{ i.stationId }}</td><td>{{ label(i.item) }}</td><td>{{ number(i.stock) }}</td><td>{{ i.source }}</td></tr></tbody></table><p v-if="!stocks.length" class="p-5 text-slate-400">No matching inventory observations.</p></div>
     <form class="space-y-4 rounded border border-slate-700 p-4" @submit.prevent="planForm">
       <h3 class="text-lg font-semibold">Custom recipe resource calculator</h3>
