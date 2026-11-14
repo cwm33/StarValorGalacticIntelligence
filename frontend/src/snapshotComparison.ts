@@ -6,7 +6,7 @@ export function compareSnapshots(before: Snapshot, after: Snapshot): Comparison 
   const changes: Change[] = [], warnings = [
     'Compare only saves from the same campaign. Newly observed records may reflect discovery, not construction or acquisition.',
     'Sector identity is a save-list index with unverified cross-save stability. Sector discovery and sector-price changes are not compared.',
-    'Absent records and missing values are unknown, not zero or evidence of loss. Duplicate comparison keys are excluded.',
+    'Absent records and missing values are unknown, not zero or evidence of loss. Duplicate keys are excluded; negative price and stock sentinels have no numeric delta.',
   ]
   if (before.provenance.includesSpoilers || after.provenance.includesSpoilers) return { changes: [], warnings: ['Disable spoilers to compare discovered snapshots.'] }
   if (before.provenance.gameVersion !== after.provenance.gameVersion || before.provenance.mechanicsProfile !== after.provenance.mechanicsProfile)
@@ -14,7 +14,7 @@ export function compareSnapshots(before: Snapshot, after: Snapshot): Comparison 
   if (before.player.name !== after.player.name) warnings.push('Player name differs. Campaign continuity must be checked before interpreting changes.')
   function add(category: string, identity: string, a: number | string | null, b: number | string | null) {
     if (a === b) return
-    changes.push({ category, identity, before: a, after: b, delta: typeof a === 'number' && typeof b === 'number' ? b - a : null })
+    changes.push({ category, identity, before: a, after: b, delta: typeof a === 'number' && typeof b === 'number' && Number.isFinite(a) && Number.isFinite(b) && (!(category === 'Codex price' || category === 'Inventory stock') || (a >= 0 && b >= 0)) ? b - a : null })
   }
   add('Player', 'Credits', before.player.credits, after.player.credits)
   add('Player', 'Ship model', before.player.shipModel ? itemKey(before.player.shipModel) : null, after.player.shipModel ? itemKey(after.player.shipModel) : null)

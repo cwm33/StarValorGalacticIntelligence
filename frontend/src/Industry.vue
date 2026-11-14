@@ -9,7 +9,7 @@ const station = ref(''), query = ref(''), scenario = ref(''), error = ref(''), b
 const result = ref<{ resources: { item: Identity; consumed: number; produced: number; available: number | null; shortfall: number | null }[]; warnings: string[] }>()
 const stocks = computed(() => props.snapshot.inventories.filter(i => (!station.value || String(i.stationId) === station.value) && (!query.value || label(i.item).toLowerCase().includes(query.value.toLowerCase()))))
 function emptyScenario() { return { profile: props.snapshot.provenance.mechanicsProfile, gameVersion: props.snapshot.provenance.gameVersion ?? 'Unknown', recipes: [], orders: [], available: [] } }
-function initialize() { scenario.value = JSON.stringify(emptyScenario(), null, 2); result.value = undefined; error.value = ''; station.value = '' }
+function initialize() { scenario.value = JSON.stringify(emptyScenario(), null, 2); result.value = undefined; error.value = ''; station.value = ''; inputs.value = []; outputs.value = []; recipeId.value = ''; cycles.value = 1 }
 watch(() => props.snapshot, initialize, { immediate: true })
 async function planForm() {
   if (!outputs.value.length) { error.value = 'Add at least one recipe output.'; return }

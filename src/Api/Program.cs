@@ -59,7 +59,7 @@ app.MapPost("/api/import", async (HttpRequest request) =>
         var graph = Decode(save);
         var companion = info is null ? null : Decode(info);
         var safe = catalog.Enrich(SaveView.Create(graph, companion, mechanics, false), mechanics);
-        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe, catalog));
+        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe, catalog, DateTimeOffset.UtcNow));
         return Results.Ok(new { id = current.Id, view = safe, hasInfo = companion is not null });
     }
     catch (Exception e) when (e is IOException or InvalidDataException or
@@ -162,12 +162,22 @@ static string Cell(object? value)
     return "\"" + text.Replace("\"", "\"\"") + "\"";
 }
 
-sealed record Session(Guid Id, Graph Main, Graph? Info, string Mechanics, SaveView Safe, GameDataCatalog Catalog)
+sealed class Session
 {
-    public DateTimeOffset ImportedAt { get; } = DateTimeOffset.UtcNow;
-    public Lazy<GalacticIntelligence.GalaxySnapshot> SafeIntelligence => safeIntelligence ??= new(() => IntelligenceProjection.Create(Safe, Id.ToString(), ImportedAt, false));
-    public Lazy<GalacticIntelligence.GalaxySnapshot> FullIntelligence => fullIntelligence ??= new(() => IntelligenceProjection.Create(Full.Value, Id.ToString(), ImportedAt, true));
-    private Lazy<GalacticIntelligence.GalaxySnapshot>? safeIntelligence;
-    private Lazy<GalacticIntelligence.GalaxySnapshot>? fullIntelligence;
-    public Lazy<SaveView> Full { get; } = new(() => Catalog.Enrich(SaveView.Create(Main, Info, Mechanics, true), Mechanics));
+    public Guid Id { get; }
+    public Graph Main { get; }
+    public Graph? Info { get; }
+    public string Mechanics { get; }
+    public SaveView Safe { get; }
+    public DateTimeOffset ImportedAt { get; }
+    public Lazy<SaveView> Full { get; }
+    public Lazy<GalacticIntelligence.GalaxySnapshot> SafeIntelligence { get; }
+    public Lazy<GalacticIntelligence.GalaxySnapshot> FullIntelligence { get; }
+    public Session(Guid id, Graph main, Graph? info, string mechanics, SaveView safe, GameDataCatalog catalog, DateTimeOffset importedAt)
+    {
+        Id = id; Main = main; Info = info; Mechanics = mechanics; Safe = safe; ImportedAt = importedAt;
+        Full = new(() => catalog.Enrich(SaveView.Create(main, info, mechanics, true), mechanics));
+        SafeIntelligence = new(() => IntelligenceProjection.Create(safe, id.ToString(), importedAt, false));
+        FullIntelligence = new(() => IntelligenceProjection.Create(Full.Value, id.ToString(), importedAt, true));
+    }
 }

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
@@ -39,6 +39,7 @@ test('command views, discovery gate and responsive atlas', async ({ page }) => {
   await expect(page.getByLabel('Select a sector (keyboard accessible)').locator('option')).toHaveCount(31)
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('img', { name: 'Galactic sector map' })).toBeVisible()
+  await page.screenshot({ path: 'test-results/atlas-mobile.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.getByRole('button', { name: 'Market Intelligence', exact: true }).click()
@@ -72,8 +73,33 @@ test('command views, discovery gate and responsive atlas', async ({ page }) => {
   await page.getByRole('button', { name: 'Pin current snapshot as baseline', exact: true }).click()
   await page.getByLabel('These snapshots belong to the same campaign').check()
   await expect(page.getByText('No changes in comparable', { exact: false })).toBeVisible()
+  mkdirSync(join(directory, 'later'))
+  const later = join(directory, 'later', 'SaveGameData_99.dat')
+  execFileSync(process.env.PYTHON ?? 'python3', ['../tests/api_smoke.py', '--fixture', later, '--credits', '1500'])
+  await page.getByText('Import another save / recent saves', { exact: true }).click()
+  await page.locator('input[name=save]').setInputFiles(later)
+  await page.getByRole('button', { name: 'Import save', exact: true }).click()
+  await expect(page.getByText('1,500 credits', { exact: false }).first()).toBeVisible()
+  await page.getByLabel('These snapshots belong to the same campaign').check()
+  await expect(page.getByRole('row').filter({ hasText: 'Credits' })).toContainText('500')
   await page.getByRole('button', { name: 'Save Explorer', exact: true }).click()
   await expect(page.getByLabel('Table', { exact: true })).toBeVisible()
   expect(createHash('sha256').update(readFileSync(fixture)).digest('hex')).toEqual(inputHash)
   expect(errors).toEqual([])
+})
+
+
+test('atlas handles two thousand synthetic sectors', async ({ page }) => {
+  const large = join(directory, 'large', 'SaveGameData_99.dat')
+  mkdirSync(join(directory, 'large'))
+  execFileSync(process.env.PYTHON ?? 'python3', ['../tests/api_smoke.py', '--fixture', large, '--sectors', '2000'])
+  await page.goto('/')
+  await page.locator('input[name=save]').setInputFiles(large)
+  await page.getByLabel('Keep a browser copy').uncheck()
+  await page.getByRole('button', { name: 'Import save', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Galactic Atlas', exact: true }).click()
+  await expect(page.locator('svg circle')).toHaveCount(1994)
+  await page.getByLabel('Search sectors').fill('Sector 1993')
+  await expect(page.locator('svg circle')).toHaveCount(1)
 })

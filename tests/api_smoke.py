@@ -11,7 +11,7 @@ import urllib.request
 import urllib.error
 
 
-def fixture(modern=True):
+def fixture(modern=True, sector_count=36, credits=1000.0):
     out = io.BytesIO()
     def i(n): out.write(struct.pack('<i', n))
     def s(t):
@@ -41,8 +41,8 @@ def fixture(modern=True):
     def obj(type_name, **fields): return (type_name, fields)
     sectors = []
     stations = []
-    for n in range(36):
-        fields = dict(name=f'Synthetic Sector {n}', x=float(n % 6 * 10), y=float(n // 6 * 10), level=n % 20 + 1, discovered=n < 30, spotted=n < 33, population=float(n * 100))
+    for n in range(sector_count):
+        fields = dict(name=f'Synthetic Sector {n}', x=float(n % 6 * 10), y=float(n // 6 * 10), level=n % 20 + 1, discovered=n < sector_count - 6, spotted=n < sector_count - 3, population=float(n * 100))
         if modern:
             fields['marketPriceControl'] = obj('MarketPriceControl', prices=[obj('ItemMarketPrice', itemID=18, buyingPrice=float(10 + n), sellingPrice=float(15 + n), tradePrice=-1.0 if n == 0 else float(12 + n), IsResourceStarved=n % 4 == 0)])
         sectors.append(obj('Sector', **fields))
@@ -51,8 +51,8 @@ def fixture(modern=True):
         st['itemStock' if modern else 'market'] = obj('Stock', items=stock) if modern else stock
         if modern: st['modules'] = [obj('Module', persistentItems=[obj('ItemStock', itemType=3, itemID=18, stock=2.0)])]
         stations.append(obj('Station', **st))
-    root = dict(savedVersion=2.251 if modern else 2.05, credits=1000.0, expansion_BaseBuilding=modern,
-                character=obj('Character', name='Synthetic Commander', level=10, codex=obj('Codex', records=[] if modern else [obj('TradeRecord', stationID=100+n, items=[obj('CodexItem', itemID=18, price=float(20+n))]) for n in range(36)])),
+    root = dict(savedVersion=2.251 if modern else 2.05, credits=float(credits), expansion_BaseBuilding=modern,
+                character=obj('Character', name='Synthetic Commander', level=10, codex=obj('Codex', records=[] if modern else [obj('TradeRecord', stationID=100+n, items=[obj('CodexItem', itemID=18, price=float(20+n))]) for n in range(sector_count)])),
                 spaceShipData=obj('Ship', shipModelID=55, HPstatus=95.0, weapons=[obj('Weapon', weaponIndex=0, slotIndex=1, rarity=2)], equipments=[obj('Equipment', equipmentID=29, qnt=1, rarity=1)]),
                 sectors=sectors, stationList=stations)
     if modern: root['galacticMarket'] = obj('GalacticMarket')
@@ -72,8 +72,16 @@ def import_fixture(data, profile='Unknown'):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--fixture':
-        with open(sys.argv[2], 'wb') as f: f.write(fixture())
+    if '--fixture' in sys.argv:
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--fixture', required=True)
+        parser.add_argument('--sectors', type=int, default=36)
+        parser.add_argument('--credits', type=float, default=1000.0)
+        parser.add_argument('--legacy', action='store_true')
+        options = parser.parse_args()
+        with open(options.fixture, 'xb') as f:
+            f.write(fixture(not options.legacy, options.sectors, options.credits))
         print('Wrote synthetic fixture'); sys.exit(0)
     for modern in [False, True]:
         data = fixture(modern); before = hashlib.sha256(data).digest()

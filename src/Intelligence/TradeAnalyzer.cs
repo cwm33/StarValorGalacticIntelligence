@@ -22,11 +22,14 @@ public static class TradeAnalyzer
         foreach (var group in quotes.GroupBy(q => (q.Commodity.Namespace, q.Commodity.Id)))
         {
             if (group.Key.Namespace != "commodity") continue;
-            var buys = group.Where(q => Valid(q.PlayerBuyPrice) && (q.Verified || includeExperimental));
-            var sells = group.Where(q => Valid(q.PlayerSellPrice) && (q.Verified || includeExperimental));
+            var buys = group.Where(q => Valid(q.PlayerBuyPrice) && (q.Verified || includeExperimental)).OrderBy(q => q.PlayerBuyPrice).ToArray();
+            var sells = group.Where(q => Valid(q.PlayerSellPrice) && (q.Verified || includeExperimental)).OrderByDescending(q => q.PlayerSellPrice).ToArray();
             foreach (var buy in buys)
             foreach (var sell in sells)
             {
+                // For per-item ranking, descending sells let us stop once no later quote can enter the bounded top set.
+                var difference = sell.PlayerSellPrice!.Value - buy.PlayerBuyPrice!.Value;
+                if (rankBy is not ("gross" or "net" or "cargo") && results.Count == capacity && results.TryPeek(out _, out var floor) && difference <= floor) break;
                 if (buy.Location == sell.Location || buy.Source != sell.Source || sell.PlayerSellPrice <= buy.PlayerBuyPrice) continue;
                 var warnings = new List<string>();
                 if (!buy.Verified || !sell.Verified) warnings.Add("Experimental price direction; not an executable or guaranteed profit.");
@@ -50,13 +53,12 @@ public static class TradeAnalyzer
                 // A known zero constraint proves inability to trade even if other limits are missing.
                 if (knownLimits.Contains(0)) quantity = 0;
                 if (quantity == 0) warnings.Add("Known constraints permit no units.");
-                var difference = sell.PlayerSellPrice!.Value - buy.PlayerBuyPrice!.Value;
                 var gross = quantity * difference;
                 var net = Valid(limits.RouteCost) ? gross - limits.RouteCost : null;
                 if (!Valid(limits.RouteCost)) warnings.Add("Route cost unknown; net profit is unknown.");
                 if (!Valid(limits.TravelEffort)) warnings.Add("Travel effort unknown; no proximity route assumed.");
                 var executable = buy.Verified && sell.Verified && buy.Fresh && sell.Fresh && buy.Accessible == true && sell.Accessible == true &&
-                    buy.Hostile == false && sell.Hostile == false && quantity > 0;
+                    buy.Hostile == false && sell.Hostile == false && quantity > 0 && Valid(limits.RouteCost) && Valid(limits.TravelEffort);
                 var result = new TradeOpportunity(buy.Commodity, buy.Location, sell.Location, buy.PlayerBuyPrice.Value, sell.PlayerSellPrice.Value,
                     difference, quantity, gross, net, volume > 0 && Valid(volume) ? difference / volume : null,
                     Valid(limits.TravelEffort) ? limits.TravelEffort : null, executable, warnings);

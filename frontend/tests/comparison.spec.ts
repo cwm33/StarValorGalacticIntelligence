@@ -18,10 +18,24 @@ test('comparison uses station and namespaced item IDs, never graph record IDs', 
   const result = compareSnapshots(before, after)
   expect(result.changes).toHaveLength(1)
   expect(result.changes[0]).toMatchObject({ delta: 5, identity: 'Station stock:station:101:commodity:18:rarity:0' })
+  before.inventories[0]!.stock = -1
+  expect(compareSnapshots(before, after).changes[0]?.delta).toBeNull()
   after.inventories.push(stock('commodity', 12, 99))
   expect(compareSnapshots(before, after).changes).toHaveLength(0)
 })
 test('comparison cannot expose spoiler snapshots', () => {
   const before = snapshot(), after = snapshot(); after.provenance.includesSpoilers = true; after.player.credits = 500
   expect(compareSnapshots(before, after).changes).toHaveLength(0)
+})
+
+test('schema source changes do not turn missing inventories into losses', () => {
+  const before = snapshot(), after = snapshot()
+  before.provenance.gameVersion = '2.05'
+  before.relations = [{ from: 1, to: 2, value: -20, evidence: { source: 'Faction relations', graphRecord: 10, raw: {}, confidence: 'Extracted', note: null } }]
+  after.relations = [{ ...before.relations[0]!, value: -5 }]
+  before.markets = [{ commodity: { namespace: 'commodity', id: 18, name: null, confidence: 'Unknown', nameSource: null }, source: 'Codex prices', stationId: 101, sectorId: 0, codexPrice: 20, buyingPrice: null, sellingPrice: null, tradePrice: null, buyingOverstocked: null, resourceStarved: null, trading: null, tradingOverstocked: null, priceSemantics: 'Unverified', evidence: before.relations[0]!.evidence }]
+  after.markets = [{ ...before.markets[0]!, source: 'Sector prices', stationId: null, codexPrice: null, buyingPrice: 30 }]
+  const result = compareSnapshots(before, after)
+  expect(result.changes).toHaveLength(1)
+  expect(result.changes[0]).toMatchObject({ category: 'Faction relationship', delta: 15 })
 })

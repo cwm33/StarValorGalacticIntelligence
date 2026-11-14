@@ -194,8 +194,11 @@ async function openRecord(number: number, nextPage = 0) {
     <header>
       <p class="text-sm font-medium text-cyan-300">Star Valor Galactic Intelligence</p>
       <h1 class="text-3xl font-semibold">Galactic Command</h1>
+      <p v-if="intelligence" class="mt-2 text-sm text-slate-400">{{ intelligence.player.name ?? 'Unknown commander' }} · {{ intelligence.player.credits == null ? 'Unknown credits' : intelligence.player.credits.toLocaleString() + ' credits' }}</p>
     </header>
-    <form class="flex flex-wrap items-end gap-4 rounded-lg border border-slate-700 p-4" @submit.prevent="upload">
+    <details :open="!view" class="rounded-lg border border-slate-700 p-3">
+      <summary class="cursor-pointer font-medium">{{ view ? 'Import another save / recent saves' : 'Import a save' }}</summary>
+    <form class="mt-3 flex flex-wrap items-end gap-4 rounded-lg border border-slate-700 p-4" @submit.prevent="upload">
       <label class="grid gap-1 text-sm">Main save <input required name="save" type="file" accept=".dat"></label>
       <label class="grid gap-1 text-sm">Companion Info (optional) <input name="info" type="file" accept=".dat"></label>
       <label class="grid gap-1 text-sm">Mechanics profile <select name="mechanics"><option>Unknown</option><option>Vanilla</option><option>Galaxy Reforged</option></select></label>
@@ -226,13 +229,14 @@ async function openRecord(number: number, nextPage = 0) {
       </ul>
     </section>
     <p v-if="historyError" role="status" class="text-amber-300">{{ historyError }}</p>
+    </details>
     <p v-if="busy" role="status" class="text-cyan-300">Loading…</p>
     <p v-if="error" role="alert" class="text-red-300">{{ error }}</p>
     <div class="flex flex-wrap items-center gap-4">
       <button :aria-expanded="diagnosticsOpen" aria-controls="resolver-diagnostics" @click="diagnosticsOpen = !diagnosticsOpen">
         {{ diagnosticsOpen ? 'Hide resolver diagnostics' : 'Resolver diagnostics' }}
       </button>
-      <label v-if="view" class="flex items-center gap-2"><input v-model="showIds" type="checkbox"> Show original IDs</label>
+      <label v-if="view && workspace === 'Save Explorer'" class="flex items-center gap-2"><input v-model="showIds" type="checkbox"> Show original IDs</label>
     </div>
     <section v-if="diagnosticsOpen" id="resolver-diagnostics" class="space-y-3 rounded border border-slate-700 p-4">
       <h2 class="font-semibold">Resolver diagnostics</h2>

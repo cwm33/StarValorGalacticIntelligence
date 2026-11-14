@@ -72,6 +72,10 @@ Test("verified trade respects stock, credits, cargo and existing cargo", () => {
     var r = TradeAnalyzer.Analyze([Quote("A", buy: 10), Quote("B", sell: 20)], new(35, 10, 4, 8, 2, 3)).Single();
     Require(r.Quantity == 3 && r.GrossProfit == 30 && r.EstimatedNetProfit == 28 && r.ProfitPerCargoUnit == 5 && r.Executable);
 });
+Test("verified prices without grounded route costs cannot be called executable", () => {
+    var r = TradeAnalyzer.Analyze([Quote("A", buy: 10), Quote("B", sell: 20)], new(100, 20, 0, 10)).Single();
+    Require(r.Quantity == 10 && !r.Executable && r.EstimatedNetProfit is null);
+});
 Test("unverified quotes require opt-in and never become executable", () => {
     var quotes = new[] { Quote("A", buy: 10, verified: false), Quote("B", sell: 20, verified: false) };
     Require(TradeAnalyzer.Analyze(quotes, new(100, 20, 0, 10)).Count == 0);
@@ -117,6 +121,11 @@ Test("industry profile and version mismatch, duplicate resources and invalid qua
 });
 Test("empty industry catalogs never fabricate recipes or stock", () => {
     var r = IndustryPlanner.Plan(new("Unknown", "future", [], [], [])); Require(r.Resources.Count == 0 && r.Warnings.Count > 0);
+});
+Test("large observed markets rank a bounded top set", () => {
+    var quotes = Enumerable.Range(0, 2000).Select(i => Quote($"Sector {i}", buy: i + 1, sell: i + 2, verified: false, stock: null)).ToArray();
+    var r = TradeAnalyzer.Analyze(quotes, new(1000, null, null, null), true);
+    Require(r.Count == 100 && r[0].DifferencePerItem == 2000 && r.All(o => !o.Executable));
 });
 var failed = 0;
 foreach (var (name, body) in tests) { try { body(); Console.WriteLine("PASS " + name); } catch (Exception e) { failed++; Console.Error.WriteLine("FAIL " + name + ": " + e); } }
