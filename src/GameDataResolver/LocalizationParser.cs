@@ -8,16 +8,17 @@ public sealed record LocalizationParseResult(
     IReadOnlyList<int> Sections, IReadOnlyList<LocalizationEntry> Entries,
     IReadOnlyList<ResolverDiagnostic> Diagnostics);
 
-/// <summary>Parser for the reported line-oriented format, pending authentic-file validation.</summary>
+/// <summary>Parser for numbered sections and pipe-delimited records.</summary>
 public sealed class LocalizationParser
 {
     private static readonly Regex Header = new(@"^\[(\d+)\](?:\s.*)?$", RegexOptions.CultureInvariant);
     private static readonly Regex Entry = new(@"^(\d+)\s+(.+)$", RegexOptions.CultureInvariant);
 
     /// <summary>Does not close the caller-owned reader. Invalid lines are diagnosed and skipped.</summary>
-    public LocalizationParseResult Parse(TextReader reader, string source = "<reader>")
+    public LocalizationParseResult Parse(TextReader reader, string source = "<reader>", bool gameFileFormat = false)
     {
         ArgumentNullException.ThrowIfNull(reader);
+        if (gameFileFormat) return ParseGameFile(reader, source);
         var sections = new HashSet<int>();
         var entries = new List<LocalizationEntry>();
         var diagnostics = new List<ResolverDiagnostic>();
@@ -73,5 +74,70 @@ public sealed class LocalizationParser
             entries.Add(entry);
         }
         return new(sections.Order().ToArray(), entries.AsReadOnly(), diagnostics.AsReadOnly());
+    }
+
+    // The game indexes pipe-terminated records by position within each section.
+    // Cross-check the printed numbering so a malformed source cannot shift name lookups.
+    private static LocalizationParseResult ParseGameFile(TextReader reader, string source)
+    {
+        var sections = new List<int>();
+        var entries = new List<LocalizationEntry>();
+        var diagnostics = new List<ResolverDiagnostic>();
+        var section = -1;
+        var index = 0;
+        var line = 1;
+        var invalid = false;
+        var sectionEntries = new List<LocalizationEntry>();
+        void FinishSection()
+        {
+            if (!invalid) entries.AddRange(sectionEntries);
+            sectionEntries.Clear();
+        }
+
+        var records = reader.ReadToEnd().Split('|');
+        for (var i = 0; i < records.Length; i++)
+        {
+            var record = records[i];
+            var startLine = line;
+            line += record.Count(c => c == '\n');
+            var start = record.AsSpan().TrimStart().TrimStart('\uFEFF');
+            startLine += record.AsSpan(0, record.Length - start.Length).Count('\n');
+            var text = start.TrimEnd().ToString();
+            if (text.Length == 0 || text.StartsWith('#')) continue;
+            var header = Header.Match(text);
+            if (header.Success)
+            {
+                FinishSection();
+                section++;
+                index = 0;
+                invalid = i == records.Length - 1 ||
+                    !int.TryParse(header.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) ||
+                    number != section;
+                if (invalid)
+                    diagnostics.Add(new("SectionOutOfOrder", DiagnosticSeverity.Error,
+                        "Section numbering or terminator differs from the game format. Catalog section ignored.", source, startLine, Section: section));
+                else sections.Add(section);
+                continue;
+            }
+
+            var prefix = text.AsSpan(0, Math.Min(3, text.Length));
+            if (section < 0 || i == records.Length - 1 || prefix.Length != 3 ||
+                !int.TryParse(prefix, NumberStyles.None, CultureInfo.InvariantCulture, out var id) ||
+                id != index || (text.Length > 3 && text[3] != ' '))
+            {
+                invalid = true;
+                diagnostics.Add(new("UnexpectedEntry", DiagnosticSeverity.Error,
+                    "Entry numbering or terminator differs from the game format. Catalog section ignored.",
+                    source, startLine, Id: index, Section: section));
+            }
+            else if (text.Length > 4)
+            {
+                var name = text[4..].Trim();
+                sectionEntries.Add(new(section, index, name, Array.AsReadOnly(new[] { name }), startLine));
+            }
+            index++;
+        }
+        FinishSection();
+        return new(sections.AsReadOnly(), entries.AsReadOnly(), diagnostics.AsReadOnly());
     }
 }

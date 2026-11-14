@@ -14,7 +14,9 @@ builder.WebHost.ConfigureKestrel(k =>
 });
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals);
+builder.Services.AddSingleton<GameDataCatalog>();
 var app = builder.Build();
+var catalog = app.Services.GetRequiredService<GameDataCatalog>();
 app.Use(async (context, next) =>
 {
     if (context.Request.Host.Host != "127.0.0.1" || context.Request.Host.Port != port)
@@ -56,8 +58,8 @@ app.MapPost("/api/import", async (HttpRequest request) =>
         }
         var graph = Decode(save);
         var companion = info is null ? null : Decode(info);
-        var safe = SaveView.Create(graph, companion, mechanics, false);
-        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe));
+        var safe = catalog.Enrich(SaveView.Create(graph, companion, mechanics, false), mechanics);
+        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe, catalog));
         return Results.Ok(new { id = current.Id, view = safe, hasInfo = companion is not null });
     }
     catch (Exception e) when (e is IOException or InvalidDataException or
@@ -69,6 +71,14 @@ app.MapPost("/api/import", async (HttpRequest request) =>
     finally { importLock.Release(); }
 });
 
+app.MapGet("/api/resolver", () => Results.Ok(catalog.Diagnostics()));
+app.MapGet("/api/{id:guid}/resolver", (Guid id, bool? spoilers) =>
+{
+    if (Find(id) is not { } session) return Missing();
+    var view = View(session, spoilers);
+    var version = Convert.ToString(view.Metadata.GetValueOrDefault("savedVersion"), CultureInfo.InvariantCulture);
+    return Results.Ok(new { catalog = catalog.Diagnostics(session.Mechanics, version), observed = GameDataCatalog.Observed(view) });
+});
 app.MapGet("/api/{id:guid}/view", (Guid id, bool? spoilers) =>
     Find(id) is { } s ? Results.Ok(View(s, spoilers)) : Missing());
 app.MapGet("/api/{id:guid}/schema", (Guid id, bool? spoilers, string? source, string? q, int? offset, int? record, int? itemOffset) =>
@@ -105,7 +115,8 @@ app.MapGet("/api/{id:guid}/export.csv", (Guid id, bool? spoilers, string? table)
     var headers = rows.SelectMany(row => row.Keys).Distinct().ToArray();
     var csv = new StringBuilder().AppendJoin(',', headers.Select(Cell)).Append("\r\n");
     foreach (var row in rows)
-        csv.AppendJoin(',', headers.Select(key => Cell(row.GetValueOrDefault(key)))).Append("\r\n");
+        csv.AppendJoin(',', headers.Select(key => Cell(row.GetValueOrDefault(key) is CatalogName resolution
+            ? resolution.DisplayName : row.GetValueOrDefault(key)))).Append("\r\n");
     return Results.File(new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray(),
         "text/csv; charset=utf-8", "star-valor-table.csv");
 });
@@ -124,7 +135,7 @@ static string Cell(object? value)
     return "\"" + text.Replace("\"", "\"\"") + "\"";
 }
 
-sealed record Session(Guid Id, Graph Main, Graph? Info, string Mechanics, SaveView Safe)
+sealed record Session(Guid Id, Graph Main, Graph? Info, string Mechanics, SaveView Safe, GameDataCatalog Catalog)
 {
-    public Lazy<SaveView> Full { get; } = new(() => SaveView.Create(Main, Info, Mechanics, true));
+    public Lazy<SaveView> Full { get; } = new(() => Catalog.Enrich(SaveView.Create(Main, Info, Mechanics, true), Mechanics));
 }

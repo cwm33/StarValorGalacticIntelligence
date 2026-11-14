@@ -17,6 +17,19 @@ In Save Explorer, select `SaveGameData_XX.dat` and optionally the matching `Save
 
 The default view includes discovered sectors and stations marked discovered within those sectors. The spoiler switch also enables raw Schema search, reference navigation, and raw JSON export. Normalized JSON and table CSV exports follow the current spoiler setting. Table CSV exports the entire selected table. Raw record IDs are graph-local navigation identifiers, distinct from serialized game IDs.
 
+## Game data and diagnostics
+
+The API checks the standard Windows Steam install for `Language/english_main.txt`. For a different Steam library or another install, set the game directory before launching from PowerShell.
+
+```powershell
+$env:GameData__InstallationDirectory = 'D:\SteamLibrary\steamapps\common\Star Valor'
+.\Launch.cmd
+```
+
+The resolver opens localization read-only at startup. Restart after changing configuration. Use **Resolver diagnostics** to see catalog sources, compatibility warnings, conflicts, and the resolved and unresolved IDs in the current view. Tables filter by name or raw ID. **Show original IDs** displays the IDs alongside names. Numeric fields remain available in JSON and CSV.
+
+Optional private JSON files can supply validated mappings through `GameData__UserOverrides` and `GameData__GalaxyReforgedOverrides`. Set each environment variable to the absolute path of the respective file. The mod file applies only to saves imported with the Galaxy Reforged profile. Use [schema version 1](docs/game-data-resolver/README.md) with raw catalog IDs and set `callerValidated` to true only after verifying the mapping for the applicable saves. User overrides take precedence. Keep files outside Git.
+
 ## Validation
 
 ```powershell
@@ -31,14 +44,14 @@ The first command checks a handwritten cyclic NRBF fixture and malformed input. 
 - Main-save fields supply player name, level, credits, ship model ID, and game version. Companion metadata is displayed separately because it may reflect a different point in time. An absent Base Building flag is unknown.
 - The legacy layout exposes serialized station market stock and saved player trade codex prices. The newer layout exposes sector `ItemMarketPrice` records, station `ItemStock`, and market module `persistentItems`. Amounts and flags retain their serialized field names, including negative values. Pricing direction, freshness, and executable trade information require independent validation.
 - Sectors use the position in the serialized sector list. Stations and items retain numeric game IDs. The player ship and ships linked from sector `aiChars` are normalized. Dynamic characters, ship loadouts, and other ship-bearing records are available through raw inspection. Faction tables expose serialized relation endpoints and faction attack-power fields.
-- Vanilla and Galaxy Reforged are explicit user-selected provenance labels. The installed mod was present on the validation machine, but neither save was independently attributed to a Galaxy Reforged ruleset. Mod-added data inside supported NRBF records survives raw export. Mod sidecars, package ID interpretation, mod-specific rules, and item, ship, and faction name catalogs are unverified.
+- Vanilla and Galaxy Reforged are explicit user-selected provenance labels. Neither fixture has independent Galaxy Reforged provenance. Saved weapon names are available in that profile, along with explicitly validated overrides. Mod sidecars and mod-specific rules remain unverified.
 - Unknown fields survive in the raw record graph. Unfamiliar roots are available for raw inspection. Unknown versions receive a warning. Array encodings that the NRBF reader or the decoder's safe materialization path cannot handle produce import errors. Imports are limited to 32 MiB per file with additional array element limits.
 
 The decoder uses the record API described in [Microsoft's NRBF migration guide](https://learn.microsoft.com/dotnet/standard/serialization/binaryformatter-migration-guide/read-nrbf-payloads).
 
 ## Standalone game data resolver
 
-The optional [.NET 10 resolver library](docs/game-data-resolver/README.md) resolves category-scoped numeric IDs using explicit localization bindings and external mod/user mappings. It has no game data dependencies or verified built-in section mappings. See [INTEGRATION.md](INTEGRATION.md) for incorporation steps and [validation requirements](docs/game-data-resolver/VALIDATION.md) for remaining evidence gaps.
+The optional [.NET 10 resolver library](docs/game-data-resolver/README.md) resolves category-scoped numeric IDs using explicit localization bindings and external mod/user mappings. The standalone library has no game data dependencies. The API supplies the locally validated bindings described in [INTEGRATION.md](INTEGRATION.md). See the [validation record](docs/game-data-resolver/VALIDATION.md) for coverage and compatibility limits.
 
 ```sh
 dotnet run --project tests/GameDataResolver.Tests

@@ -5,6 +5,8 @@ public sealed class SaveView
     public Dictionary<string, object?> Metadata { get; } = new();
     public Dictionary<string, List<Dictionary<string, object?>>> Tables { get; } = new();
     public List<string> Warnings { get; } = new();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyDictionary<int, string> WeaponNames { get; private set; } = new Dictionary<int, string>();
     public int HiddenSectors { get; private set; }
 
     public static SaveView Create(Graph graph, Graph? info, string mechanics, bool spoilers)
@@ -65,7 +67,31 @@ public sealed class SaveView
         result.Metadata["marketLayout"] = root.Fields.ContainsKey("galacticMarket") ? "Sector prices and station stock" : "Legacy codex prices and station market";
         if (System.Convert.ToString(version, System.Globalization.CultureInfo.InvariantCulture) is not ("2.05" or "2.251"))
             result.Warnings.Add("This game version has not been validated. Inspect the raw records if fields are missing.");
-        if (playerShip is not null) Add("Player ship", playerShip, "shipModelID HPstatus energyStatus shieldStatus");
+        if (playerShip is not null)
+        {
+            Add("Player ship", playerShip, "shipModelID HPstatus energyStatus shieldStatus");
+            foreach (var weapon in List(Child(playerShip, "weapons")))
+                Add("Installed weapons", weapon, "weaponIndex slotIndex rarity");
+            foreach (var equipment in List(Child(playerShip, "equipments")))
+                Add("Installed equipment", equipment, "equipmentID rarity qnt");
+        }
+
+        var weapons = Child(root, "weaponList");
+        var weaponItems = Child(weapons, "_items")?.Items;
+        if (weaponItems is not null && Field(weapons, "_size") is int weaponCount &&
+            weaponCount >= 0 && weaponCount <= weaponItems.Length)
+        {
+            var names = new Dictionary<int, string>();
+            for (var index = 0; index < weaponCount; index++)
+            {
+                if (weaponItems[index] is not Link link) continue;
+                var weapon = graph.Resolve(link);
+                if (weapon.Type.StartsWith("TWeapon,", StringComparison.Ordinal) &&
+                    Field(weapon, "name") is string name && !string.IsNullOrWhiteSpace(name))
+                    names.Add(index, name);
+            }
+            result.WeaponNames = names;
+        }
         var visible = new HashSet<int>();
         var sectors = List(Child(root, "sectors")).ToArray();
         for (var index = 0; index < sectors.Length; index++)

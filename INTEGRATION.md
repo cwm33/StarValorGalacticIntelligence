@@ -1,48 +1,22 @@
-# Integrating the game data resolver
+# Resolver integration
 
-This branch adds `src/GameDataResolver`, `tests/GameDataResolver.Tests`, and `examples/GameDataResolver.Demo` to the solution. It does not wire the resolver into the running API, decoder, or frontend. The existing application remains responsible for category semantics and spoiler/discovery rules. The module builds and tests without game data.
+The API registers an immutable game catalog at startup and enriches the existing save views after discovery filtering. The decoder provides raw projections and the save-local weapon catalog. It has no resolver dependency. Import and normalized JSON keep every raw field and add a sibling `*Resolution` object with the raw ID, category, name, status, source label, and localization section where applicable. CSV keeps its numeric columns and adds the corresponding display labels. Raw schema and raw JSON remain behind the spoiler gate.
 
-## Incorporation steps
+The Vue table filter matches names and raw IDs in the selected table. **Show original IDs** displays IDs alongside names. **Resolver diagnostics** reports loaded source labels, category and entry counts, load issues, and the identifiers observed in the current view. With spoilers disabled, diagnostics use only the discovered projection.
 
-1. Bring the feature branch commits into the application's integration branch when ready. Preserve concurrent decoder/frontend changes. The resolver targets `net10.0`, has no NuGet dependencies, and can be copied or referenced independently of the solution.
-2. Add a reference from the consuming project, normally `src/Api/Api.csproj`:
+## Catalog bindings
 
-   ```sh
-   dotnet add src/Api/Api.csproj reference src/GameDataResolver/GameDataResolver.csproj
-   ```
+| Save context | Catalog lookup |
+| --- | --- |
+| `shipModelID`, station stock type 4 | Section 12 (Spaceships), direct model ID |
+| Station stock type 3, sector price `itemID`, legacy trade codex `itemID` | Section 3 (Items), entry `2 × ID`; the following record is the description |
+| Station stock type 2, installed `equipmentID` | Section 2 (Equipment), entry `2 × ID`; the following record is the description |
+| Station stock type 1, installed `weaponIndex` | Index into main-save `weaponList`, using the saved `TWeapon.name`. Section 1 (Weapons) is loaded for diagnostics. In game build 2.251d, the predefined names in this section address slots below 60. Crafted and modified weapons use the save-local catalog. |
+| Station and sector ship `factionIndex` | Section 7 (Factions), entry `10 × index` |
+| Station stock type 5 | Crew namespace. Section 23 contains crew-related text. Crew instance ID to display name remains unverified. |
+| Station `modelIndex`, `buildingPlanID`, `nameIndex`, and `id` | Separate fields. Section 25 includes building plan labels. In 2.251d the station's building plan has its own localization coordinates, and the station can have a custom name. The legacy model index has no validated localization binding. |
+| Relation endpoints `ID1` and `ID2` | Raw values. The app has no verified mapping to faction display indexes. |
 
-3. Define host configuration for absolute localization paths, explicit category/section bindings, and optional mod and user JSON paths. Keep proprietary files and personal mappings outside the repository. The reportedly installed path is `Star Valor/Language/english_main.txt`; confirm spelling, encoding, and structure locally. Do not scan installations or assume section numbers.
-4. Use `ResolverLoader.Load(ResolverOptions)` at startup or explicit configuration reload, inspect `Diagnostics`, and register the snapshot as `IIdentifierResolver`. For example, inside ASP.NET Core setup after constructing `options` from your host configuration:
+The stock type switch applies to market and inventory records. The game's `ItemType` enum classifies items within ItemDB and is a separate concept. Graph record IDs identify decoder records.
 
-   ```csharp
-   using GalacticIntelligence.GameData;
-   IIdentifierResolver resolver = ResolverLoader.Load(options);
-   builder.Services.AddSingleton<IIdentifierResolver>(resolver);
-   ```
-
-   No dependency injection package is required in the library. For the strongest separation, keep naming in an API/application projection rather than adding dependencies to the NRBF decoder. Replace snapshots atomically on reload rather than modifying shared mappings.
-5. Resolve only fields whose namespace has been established. Add a nullable name and resolution status alongside the original numeric field in DTOs; do not replace or reinterpret raw fields. `resolver.ResolveShipModel(id)` is suitable after confirming `id` is a ship model identifier. Unknown category/ID returns null name, raw ID, `Unresolved` status, and an explicit message.
-6. Before exposing enriched data, apply the existing spoiler/discovery gate. Do not bypass raw schema/export restrictions or reveal hidden save rows by enriching them. Do not expose server file paths in frontend responses; translate provenance to a host-approved label if necessary. The library's full source information is for local diagnostics.
-7. Run the resolver unit tests, the existing synthetic and applicable private regressions, `dotnet build`, and the frontend build. If wiring endpoints later, exercise each changed endpoint using a private local fixture as required by `AGENTS.md`. This branch changes no endpoints.
-
-## Current save fields and namespace boundaries
-
-These field spellings are observed in this repository's `src/Decoder/SaveView.cs`, not independently decoded from authentic saves in the cloud:
-
-| Serialized field / projection | Integration contract | Evidence still needed |
-| --- | --- | --- |
-| Player/sector ship `shipModelID` | `ResolveShipModel(id)` | Corresponding localization section and version/mod provenance |
-| Station stock / market modules `itemType` + `itemID` | Explicit host translation of itemType to category, then `Resolve(category, itemID)` | Enum meanings, cross-category reuse, mod behavior |
-| Sector price and codex `itemID` without itemType | Preserve ID; resolve only after proving namespace from record context | Whether these are always commodities or another item catalog |
-| Station `modelIndex` | `ResolveStationModel(id)` after namespace validation | Whether modelIndex actually addresses a localized station model catalog |
-| Station `id`, `nameIndex`, `buildingPlanID` | Distinct custom categories only after validation | Instance ID vs catalog index, generated station names, building plan namespace |
-| `factionIndex`, relation endpoints `ID1`/`ID2` | Possible `new IdentifierCategory("faction")` | Index/ID equivalence and localization table |
-| Raw graph record references | Keep graph navigation unchanged | Graph record IDs are not game catalog IDs |
-
-`itemType` values must never be cast to section numbers. No automatic itemType switch is shipped. Weapon, equipment, and commodity convenience methods express the intended integration contracts; they do not certify save enum mappings. Other identifiers can use explicit `IdentifierCategory` instances once their semantics are established.
-
-## Validation before trusting names
-
-Follow [the validation checklist](docs/game-data-resolver/VALIDATION.md). Record game version, language, DLC, mod version and evidence for each binding. Keep `CallerValidated` false until matched against observed gameplay and save IDs; the flag is a caller attestation. Do not turn the reported Raven ID 55 observation into a general built-in mapping without validating the correct namespace and game/mod version.
-
-All library file operations use `FileAccess.Read`; the host must retain the project's existing read-only save policy. No BinaryFormatter, game type loading, runtime memory inspection, BepInEx, or installation side effects are needed.
+The host recognizes base mappings for tested save versions 2.05 and 2.251. The Unknown mechanics profile can use these mappings with a provenance warning. For Galaxy Reforged and untested save versions the host uses saved weapon names and explicitly validated overrides. Equal-priority conflicts in a winning override source suppress the affected name. See [local validation](docs/game-data-resolver/VALIDATION.md) and [configuration](README.md#game-data-and-diagnostics).

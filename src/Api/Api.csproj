@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Decoder\Decoder.csproj" />
+    <ProjectReference Include="..\GameDataResolver\GameDataResolver.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

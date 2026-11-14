@@ -26,7 +26,7 @@ public enum DiagnosticSeverity { Warning, Error }
 public sealed record ResolverDiagnostic(
     string Code, DiagnosticSeverity Severity, string Message,
     string? Source = null, int? LineNumber = null,
-    IdentifierCategory? Category = null, int? Id = null);
+    IdentifierCategory? Category = null, int? Id = null, int? Section = null);
 
 public sealed record LocalizationSource(
     SourceKind Kind, string Path, int? Section = null, int? LineNumber = null);
@@ -58,8 +58,8 @@ public static class IdentifierResolverExtensions
 }
 
 /// <summary>Explicit category-to-section binding; no semantic defaults are supplied.</summary>
-public sealed record SectionBinding(IdentifierCategory Category, int Section, bool CallerValidated = false);
-public sealed record LocalizationInput(string Path, IReadOnlyList<SectionBinding> Sections);
+public sealed record SectionBinding(IdentifierCategory Category, int Section, bool CallerValidated = false, int NameStride = 1);
+public sealed record LocalizationInput(string Path, IReadOnlyList<SectionBinding> Sections, bool GameFileFormat = false);
 public sealed record OverrideInput(string Path, SourceKind Kind);
 public sealed class ResolverOptions
 {

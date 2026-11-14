@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
+type NameResolution = { rawId: number, category: string, name: string | null, status: string, source: string | null, displayName: string }
+type Catalog = {
+  sources: { kind: string, label: string, entries: number }[], categories: Record<string, number>, entries: number,
+  issues: { code: string, severity: string, source: string, line?: number, section?: number, category?: string, id?: number }[],
+  warnings: string[]
+}
+type Diagnostics = { catalog: Catalog, observed?: { resolved: NameResolution[], unresolved: NameResolution[] } }
 type Row = Record<string, unknown>
 type View = { metadata: Row, tables: Record<string, Row[]>, warnings: string[], hiddenSectors: number }
 type RecordSummary = { id: number, type: string, kind: string }
@@ -12,6 +19,25 @@ const hasInfo = ref(false)
 const spoilers = ref(false)
 const error = ref('')
 const busy = ref(false)
+const showIds = ref(false)
+const diagnosticsOpen = ref(false)
+const diagnostics = ref<Diagnostics>()
+const diagnosticsError = ref('')
+watch([diagnosticsOpen, id, spoilers], async ([open, session, includeSpoilers], _, cleanup) => {
+  if (!open) return
+  const request = new AbortController()
+  cleanup(() => request.abort())
+  diagnostics.value = undefined
+  diagnosticsError.value = ''
+  try {
+    const options = { signal: request.signal }
+    diagnostics.value = session
+      ? await api<Diagnostics>('/api/' + session + '/resolver?spoilers=' + includeSpoilers, options)
+      : { catalog: await api<Catalog>('/api/resolver', options) }
+  } catch (failure) {
+    if (!request.signal.aborted) diagnosticsError.value = String(failure)
+  }
+})
 const table = ref('')
 const query = ref('')
 const page = ref(0)
@@ -26,10 +52,26 @@ const detail = ref<RecordDetail>()
 const itemPage = ref(0)
 const base = computed(() => '/api/' + id.value)
 const visibleRows = computed(() => (view.value?.tables[table.value] ?? []).filter(row =>
-  !query.value || Object.values(row).some(value => show(value).toLowerCase().includes(query.value.toLowerCase()))))
-const columns = computed(() => [...new Set((view.value?.tables[table.value] ?? []).flatMap(Object.keys))])
+  !query.value || Object.keys(row).filter(isDataField).some(key => [show(row[key]), resolution(row, key)?.displayName]
+    .some(value => value?.toLowerCase().includes(query.value.toLowerCase())))))
+const columns = computed(() => [...new Set((view.value?.tables[table.value] ?? []).flatMap(Object.keys))].filter(isDataField))
 const exportQuery = computed(() => '?spoilers=' + spoilers.value)
 
+function isDataField(key: string) {
+  return !key.endsWith('Resolution')
+}
+function resolution(row: Row, key: string): NameResolution | undefined {
+  return row[key + 'Resolution'] as NameResolution | undefined
+}
+function cell(row: Row, key: string) {
+  const result = resolution(row, key)
+  if (!result) return show(row[key])
+  return showIds.value && result.name ? result.name + ' (#' + result.rawId + ')' : result.displayName
+}
+function hint(row: Row, key: string) {
+  const result = resolution(row, key)
+  return result ? [result.category + ' #' + result.rawId, result.status, result.source].filter(Boolean).join(' · ') : undefined
+}
 function show(value: unknown) {
   if (value === null || value === undefined) return 'Unknown'
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
@@ -120,12 +162,54 @@ async function openRecord(number: number, nextPage = 0) {
     </form>
     <p v-if="busy" role="status" class="text-cyan-300">Loading…</p>
     <p v-if="error" role="alert" class="text-red-300">{{ error }}</p>
+    <div class="flex flex-wrap items-center gap-4">
+      <button :aria-expanded="diagnosticsOpen" aria-controls="resolver-diagnostics" @click="diagnosticsOpen = !diagnosticsOpen">
+        {{ diagnosticsOpen ? 'Hide resolver diagnostics' : 'Resolver diagnostics' }}
+      </button>
+      <label v-if="view" class="flex items-center gap-2"><input v-model="showIds" type="checkbox"> Show original IDs</label>
+    </div>
+    <section v-if="diagnosticsOpen" id="resolver-diagnostics" class="space-y-3 rounded border border-slate-700 p-4">
+      <h2 class="font-semibold">Resolver diagnostics</h2>
+      <p v-if="diagnosticsError" role="alert" class="text-red-300">{{ diagnosticsError }}</p>
+      <p v-else-if="!diagnostics" role="status">Loading resolver diagnostics…</p>
+      <template v-else>
+        <p>{{ diagnostics.catalog.entries }} catalog entries across {{ Object.keys(diagnostics.catalog.categories).length }} categories</p>
+        <ul class="text-sm">
+          <li v-for="(source, index) in diagnostics.catalog.sources" :key="index">
+            {{ source.label }} · {{ source.entries }} active entries
+          </li>
+        </ul>
+        <p v-for="warning in diagnostics.catalog.warnings" :key="warning" class="text-amber-300">{{ warning }}</p>
+        <details v-if="diagnostics.catalog.issues.length">
+          <summary>{{ diagnostics.catalog.issues.length }} catalog issues and conflicts</summary>
+          <ul class="max-h-64 overflow-auto text-sm">
+            <li v-for="(issue, index) in diagnostics.catalog.issues" :key="index">
+              {{ issue.severity }} · {{ issue.code }} · {{ issue.source }}
+              <span v-if="issue.line"> · Line {{ issue.line }}</span>
+              <span v-if="issue.section != null"> · Section {{ issue.section }}</span>
+              <span v-if="issue.category"> · {{ issue.category }}</span>
+              <span v-if="issue.id != null"> #{{ issue.id }}</span>
+            </li>
+          </ul>
+        </details>
+        <template v-if="diagnostics.observed">
+          <details v-for="(entries, status) in diagnostics.observed" :key="status">
+            <summary>{{ entries.length }} {{ status }} identifiers in this view</summary>
+            <ul class="max-h-64 overflow-auto text-sm">
+              <li v-for="entry in entries" :key="entry.category + ':' + entry.rawId">
+                {{ entry.category }} #{{ entry.rawId }} · {{ entry.name ?? entry.status }}
+              </li>
+            </ul>
+          </details>
+        </template>
+      </template>
+    </section>
     <template v-if="view">
       <section aria-label="Player metadata" class="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <div v-for="(value, key) in view.metadata" :key="key" class="rounded border border-slate-800 p-3">
-          <span class="text-sm text-slate-400">{{ ({ shipModelID: 'Ship model ID', savedVersion: 'Game version', baseBuilding: 'Base Building DLC', marketLayout: 'Market layout', info: 'Companion Info' } as Record<string,string>)[key] ?? key }}</span>
-          <details v-if="key === 'info'"><summary>File metadata</summary><pre>{{ JSON.stringify(value, null, 2) }}</pre></details>
-          <div v-else class="font-medium">{{ show(value) }}</div>
+        <div v-for="key in Object.keys(view.metadata).filter(isDataField)" :key="key" class="rounded border border-slate-800 p-3">
+          <span class="text-sm text-slate-400">{{ ({ shipModelID: 'Ship model', savedVersion: 'Game version', baseBuilding: 'Base Building DLC', marketLayout: 'Market layout', info: 'Companion Info' } as Record<string,string>)[key] ?? key }}</span>
+          <details v-if="key === 'info'"><summary>File metadata</summary><pre>{{ JSON.stringify(view.metadata[key], null, 2) }}</pre></details>
+          <div v-else class="font-medium" :title="hint(view.metadata, key)">{{ cell(view.metadata, key) }}</div>
         </div>
       </section>
       <p v-for="warning in view.warnings" :key="warning" class="text-amber-300">{{ warning }}</p>
@@ -140,14 +224,14 @@ async function openRecord(number: number, nextPage = 0) {
       <section v-if="!schema && table" class="space-y-3">
         <div class="flex flex-wrap items-center gap-3">
           <select v-model="table" aria-label="Table" @change="page = 0; query = ''"><option v-for="(_, name) in view.tables" :key="name">{{ name }}</option></select>
-          <input v-model="query" aria-label="Filter table" placeholder="Filter table" @input="page = 0">
+          <input v-model="query" aria-label="Filter table" placeholder="Filter by name or ID" @input="page = 0">
           <a class="action" :href="base + '/export.csv' + exportQuery + '&table=' + encodeURIComponent(table)">Export table CSV</a>
         </div>
         <div class="overflow-x-auto rounded border border-slate-800">
           <table class="w-full whitespace-nowrap text-sm">
             <thead class="bg-slate-900"><tr><th v-for="key in columns" :key="key">{{ key }}</th></tr></thead>
             <tbody><tr v-for="(row, index) in visibleRows.slice(page * 100, (page + 1) * 100)" :key="index">
-              <td v-for="key in columns" :key="key">{{ key in row ? show(row[key]) : '' }}</td>
+              <td v-for="key in columns" :key="key" :title="hint(row, key)">{{ key in row ? cell(row, key) : '' }}</td>
             </tr></tbody>
           </table>
         </div>

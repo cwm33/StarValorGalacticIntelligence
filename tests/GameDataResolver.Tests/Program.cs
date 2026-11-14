@@ -102,6 +102,30 @@ Test("duplicate records retain first including repeated sections", () =>
     Require(parsed.Entries.Count == 2 && parsed.Entries.First().Name == "First");
     Require(Has(parsed.Diagnostics, "DuplicateSection") && Has(parsed.Diagnostics, "DuplicateEntry") && Has(parsed.Diagnostics, "ConflictingEntry"));
 });
+Test("game format preserves positions across multiline and empty records", () =>
+{
+    var file = Write("game-language.txt", "# Comment|\r\n[0] UI|\r\n[1] Equipment|\r\n" +
+        "000 Synthetic Reactor|\r\n001 Description begins\r\n002 Still part of the description|\r\n" +
+        "002 |\r\n003 Unused description|\r\n004 Synthetic Battery|\r\n");
+    var resolver = ResolverLoader.Load(new()
+    {
+        LocalizationFiles = [new(file, [new(IdentifierCategory.Equipment, 1, true, NameStride: 2)], GameFileFormat: true)]
+    });
+    Require(resolver.Diagnostics.Count == 0);
+    Require(resolver.ResolveEquipment(0).Name == "Synthetic Reactor");
+    Require(resolver.ResolveEquipment(1).Status == ResolutionStatus.Unresolved);
+    Require(resolver.ResolveEquipment(2).Name == "Synthetic Battery");
+});
+
+Test("game format rejects a section with shifted or duplicate numbering", () =>
+{
+    var parsed = new LocalizationParser().Parse(
+        new StringReader("[0] UI|\n000 First|\n000 Duplicate|\n[1] Names|\n000 Second section|"),
+        gameFileFormat: true);
+    Require(parsed.Entries.Single() is { Section: 1, Id: 0, Name: "Second section" });
+    Require(parsed.Diagnostics.Single() is { Code: "UnexpectedEntry", Section: 0, Id: 1 });
+});
+
 Test("empty localization reports missing configured sections", () =>
 {
     var resolver = Load(Write("empty.txt", ""), new SectionBinding(weapons, 1));

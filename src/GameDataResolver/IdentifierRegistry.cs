@@ -10,6 +10,7 @@ public sealed class IdentifierRegistry : IIdentifierResolver
     private readonly Dictionary<(IdentifierCategory Category, int Id), IdentifierResolution> mappings = [];
     private readonly Dictionary<IdentifierCategory, Dictionary<string, IReadOnlyList<IdentifierResolution>>> names = [];
     public IReadOnlyList<ResolverDiagnostic> Diagnostics { get; }
+    public IReadOnlyList<IdentifierResolution> Entries { get; }
 
     public IdentifierRegistry(IEnumerable<IdentifierMapping> entries, IEnumerable<ResolverDiagnostic>? diagnostics = null)
     {
@@ -40,6 +41,7 @@ public sealed class IdentifierRegistry : IIdentifierResolver
             names[category.Key] = category.GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<IdentifierResolution>)Array.AsReadOnly(g.OrderBy(x => x.RawId).ToArray()), StringComparer.OrdinalIgnoreCase);
         Diagnostics = messages.AsReadOnly();
+        Entries = Array.AsReadOnly(mappings.Values.ToArray());
     }
 
     public IdentifierResolution Resolve(IdentifierCategory category, int id)

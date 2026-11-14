@@ -17,18 +17,19 @@ public static class ResolverLoader
             foreach (var binding in input.Sections)
             {
                 ArgumentNullException.ThrowIfNull(binding.Category);
+                if (binding.NameStride < 1) throw new ArgumentOutOfRangeException(nameof(options), "Name stride must be positive.");
                 if (binding.Section < 0) throw new ArgumentOutOfRangeException(nameof(options), "Section numbers must be nonnegative.");
             }
             Read(input.Path, diagnostics, reader =>
             {
-                var parsed = new LocalizationParser().Parse(reader, input.Path);
+                var parsed = new LocalizationParser().Parse(reader, input.Path, input.GameFileFormat);
                 diagnostics.AddRange(parsed.Diagnostics);
                 foreach (var binding in input.Sections)
                 {
                     if (!parsed.Sections.Contains(binding.Section))
                         diagnostics.Add(new("MissingSection", DiagnosticSeverity.Warning, $"Configured section {binding.Section} is absent.", input.Path, Category: binding.Category));
-                    foreach (var entry in parsed.Entries.Where(e => e.Section == binding.Section))
-                        mappings.Add(new(binding.Category, entry.Id, entry.Name,
+                    foreach (var entry in parsed.Entries.Where(e => e.Section == binding.Section && e.Id % binding.NameStride == 0))
+                        mappings.Add(new(binding.Category, entry.Id / binding.NameStride, entry.Name,
                             new(SourceKind.VanillaLocalization, input.Path, entry.Section, entry.LineNumber), binding.CallerValidated));
                 }
             });
