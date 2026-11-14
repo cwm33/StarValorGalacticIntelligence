@@ -1,0 +1,95 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { label, number, sectorLabel, type Snapshot, type Sector } from './intelligence'
+const props = defineProps<{ snapshot: Snapshot }>()
+const query = ref(''), discovery = ref('all'), marketsOnly = ref(false)
+const faction = ref(''), selected = ref<number | null>(null)
+const zoom = ref(1), pan = ref({ x: 0, y: 0 })
+let drag: { x: number; y: number; px: number; py: number } | undefined
+let moved = false
+const stationsBySector = computed(() => {
+  const index = new Map<number, Snapshot['stations']>()
+  for (const s of props.snapshot.stations) { const list = index.get(s.sectorId) ?? []; list.push(s); index.set(s.sectorId, list) }
+  return index
+})
+const marketSectors = computed(() => new Set(props.snapshot.markets.flatMap(m => m.sectorId == null ? [] : [m.sectorId])))
+const factions = computed(() => [...new Map(props.snapshot.stations.filter(s => s.faction).map(s => [s.faction!.id, s.faction!])).values()])
+const filtered = computed(() => props.snapshot.sectors.filter(s =>
+  (!query.value || `${sectorLabel(s)} ${s.id}`.toLowerCase().includes(query.value.toLowerCase())) &&
+  (discovery.value === 'all' || (discovery.value === 'discovered' ? s.discovered === true : discovery.value === 'spotted' ? s.discovered !== true && s.spotted === true : s.discovered !== true && s.spotted !== true)) &&
+  (!marketsOnly.value || marketSectors.value.has(s.id)) &&
+  (!faction.value || stationsBySector.value.get(s.id)?.some(st => String(st.faction?.id) === faction.value))))
+const bounds = computed(() => {
+  const located = props.snapshot.sectors.filter(s => s.x != null && s.y != null)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const s of located) { minX = Math.min(minX, s.x!); maxX = Math.max(maxX, s.x!); minY = Math.min(minY, s.y!); maxY = Math.max(maxY, s.y!) }
+  return { minX, minY, width: Math.max(maxX - minX, 1), height: Math.max(maxY - minY, 1) }
+})
+function point(s: Sector) {
+  const b = bounds.value, scale = Math.min(880 / b.width, 520 / b.height)
+  return { x: 500 + (s.x! - b.minX - b.width / 2) * scale, y: 300 - (s.y! - b.minY - b.height / 2) * scale }
+}
+const plotted = computed(() => filtered.value.filter(s => s.x != null && s.y != null).map(s => ({ s, ...point(s) })))
+const current = computed(() => props.snapshot.sectors.find(s => s.id === selected.value))
+const sectorStations = computed(() => selected.value == null ? [] : stationsBySector.value.get(selected.value) ?? [])
+const knownLinks = computed(() => {
+  const sectors = new Map(filtered.value.map(s => [s.id, s]))
+  return props.snapshot.connections.filter(c => c.confidence === 'Verified').flatMap(c => {
+    const a = sectors.get(c.from), b = sectors.get(c.to)
+    return a?.x != null && a.y != null && b?.x != null && b.y != null ? [{ a: point(a), b: point(b), key: `${c.from}:${c.to}` }] : []
+  })
+})
+function reset() { zoom.value = 1; pan.value = { x: 0, y: 0 } }
+function start(e: PointerEvent) { if (e.button !== 0) return; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); moved = false; drag = { x: e.clientX, y: e.clientY, px: pan.value.x, py: pan.value.y } }
+function move(e: PointerEvent) {
+  if (!drag) return
+  const box = (e.currentTarget as SVGSVGElement).getBoundingClientRect()
+  if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) moved = true
+  pan.value = { x: drag.px + (e.clientX - drag.x) * 1000 / box.width, y: drag.py + (e.clientY - drag.y) * 600 / box.height }
+}
+function select(id: number) { if (!moved) selected.value = id }
+watch(() => props.snapshot, () => { selected.value = null; reset() })
+</script>
+<template>
+  <section class="space-y-4">
+    <div class="flex flex-wrap gap-3">
+      <input v-model="query" aria-label="Search sectors" placeholder="Search sector name or ID">
+      <select v-model="discovery" aria-label="Discovery filter"><option value="all">All visible sectors</option><option value="discovered">Discovered</option><option value="spotted">Spotted, undiscovered</option><option value="unknown">Discovery unconfirmed / false</option></select>
+      <select v-model="faction" aria-label="Faction presence"><option value="">Any station faction</option><option v-for="f in factions" :key="f.id" :value="String(f.id)">{{ label(f) }}</option></select>
+      <label class="flex items-center gap-2"><input v-model="marketsOnly" type="checkbox">Observed markets</label>
+    </div>
+    <p class="text-sm text-slate-400">{{ filtered.length }} sectors match · Solid: discovered · Ring: spotted · Dim: discovery unconfirmed / false. Factions describe station presence; sector ownership and danger are unknown.</p>
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
+      <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-3">
+        <div class="flex gap-2"><button aria-label="Zoom in" @click="zoom = Math.min(12, zoom * 1.4)">+</button><button aria-label="Zoom out" @click="zoom = Math.max(.5, zoom / 1.4)">−</button><button @click="reset">Reset map</button><span class="self-center text-sm text-slate-400">Drag to pan · {{ zoom.toFixed(1) }}×</span></div>
+        <svg class="mt-3 aspect-[5/3] w-full touch-none rounded bg-slate-950" viewBox="0 0 1000 600" role="img" aria-label="Galactic sector map" @wheel.prevent="zoom = Math.min(12, Math.max(.5, zoom * ($event.deltaY > 0 ? .9 : 1.1)))" @pointerdown="start" @pointermove="move" @pointerup="drag = undefined" @pointercancel="drag = undefined">
+          <g :transform="`translate(${pan.x} ${pan.y}) translate(500 300) scale(${zoom}) translate(-500 -300)`">
+            <line v-for="c in knownLinks" :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" stroke="#475569" :stroke-width="1 / zoom" />
+            <g v-for="p in plotted" :key="p.s.id" @click.stop="select(p.s.id)">
+              <title>{{ sectorLabel(p.s) }} · Level {{ number(p.s.level) }} · {{ stationsBySector.get(p.s.id)?.length ?? 0 }} observed stations</title>
+              <circle :cx="p.x" :cy="p.y" :r="(selected === p.s.id ? 8 : 5) / Math.sqrt(zoom)" :fill="p.s.discovered === true ? (marketSectors.has(p.s.id) ? '#22d3ee' : '#94a3b8') : p.s.spotted === true ? 'transparent' : '#334155'" :stroke="selected === p.s.id ? '#fbbf24' : '#94a3b8'" :stroke-width="1.5 / zoom" class="cursor-pointer" />
+            </g>
+          </g>
+        </svg>
+        <p v-if="!plotted.length" class="p-4 text-slate-400">No matching sectors with known coordinates.</p>
+        <p class="mt-2 text-xs text-slate-400">{{ filtered.length - plotted.length }} matching sectors lack coordinates. Cyan marks an observed market. No geographic jump links are inferred.</p>
+        <label class="mt-3 grid gap-1 text-sm">Select a sector (keyboard accessible)<select :value="selected ?? ''" @change="selected = ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value)"><option value="">Choose sector</option><option v-for="s in filtered" :key="s.id" :value="s.id">{{ sectorLabel(s) }} #{{ s.id }}</option></select></label>
+      </div>
+      <aside class="space-y-3 rounded-xl border border-slate-700 p-4">
+        <template v-if="current">
+          <h3 class="text-xl font-semibold">{{ sectorLabel(current) }}</h3>
+          <p class="text-slate-400">Sector #{{ current.id }} · ({{ number(current.x) }}, {{ number(current.y) }})</p>
+          <p>Level {{ number(current.level) }} · Population {{ number(current.population) }}</p>
+          <p>Threat: unknown · Verified jump connections: {{ snapshot.connections.filter(c => c.from === current!.id || c.to === current!.id).length || 'unknown' }}</p>
+          <h4 class="font-semibold">{{ sectorStations.length }} observed stations</h4>
+          <p v-if="!sectorStations.length" class="text-slate-400">No station records in this view. Services remain unknown.</p>
+          <div v-for="s in sectorStations" :key="s.id" class="rounded border border-slate-800 p-3 text-sm">
+            <p>Station #{{ s.id }} · {{ label(s.faction) }}</p><p class="text-slate-400">Model {{ number(s.modelId) }} · Plan {{ number(s.buildingPlanId) }} · Level {{ number(s.level) }}</p>
+            <p>{{ snapshot.inventories.filter(i => i.stationId === s.id).length }} inventory observations</p>
+          </div>
+          <p class="text-xs text-slate-400">Source: {{ current.evidence.source }} · {{ current.evidence.confidence }} · {{ snapshot.provenance.gameVersion ?? 'Unknown version' }}</p>
+        </template><p v-else class="text-slate-400">Select a sector to inspect its observed stations, markets and location.</p>
+      </aside>
+    </div>
+  </section>
+</template>

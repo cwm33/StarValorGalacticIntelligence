@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Command from './Command.vue'
+import type { Snapshot } from './intelligence'
 import { computed, onMounted, ref, watch } from 'vue'
 import { clearRecentSaves, forgetSave, listRecentSaves, rememberSave, type RecentSave } from './recentSaves'
 
@@ -14,6 +16,8 @@ type View = { metadata: Row, tables: Record<string, Row[]>, warnings: string[], 
 type RecordSummary = { id: number, type: string, kind: string }
 type RecordDetail = RecordSummary & { fields?: Row, shape?: number[], value?: unknown, items?: unknown[], itemCount?: number }
 
+const intelligence = ref<Snapshot>()
+const workspace = ref('Command')
 const id = ref('')
 const view = ref<View>()
 const hasInfo = ref(false)
@@ -129,6 +133,9 @@ async function importSave(entry: RecentSave, keep: boolean) {
   const response = await api<{ id: string, view: View, hasInfo: boolean }>('/api/import', {
     method: 'POST', body, headers: { 'X-Star-Valor': 'import' },
   })
+  const domain = await api<Snapshot>('/api/' + response.id + '/intelligence?spoilers=false')
+  intelligence.value = domain
+  workspace.value = 'Command'
   id.value = response.id
   view.value = response.view
   hasInfo.value = response.hasInfo
@@ -150,6 +157,8 @@ async function toggle(event: Event) {
   checkbox.checked = spoilers.value
   await run(async () => {
     const next = await api<View>(base.value + '/view?spoilers=' + requested)
+    const domain = await api<Snapshot>(base.value + '/intelligence?spoilers=' + requested)
+    intelligence.value = domain
     spoilers.value = requested
     checkbox.checked = requested
     view.value = next
@@ -183,7 +192,7 @@ async function openRecord(number: number, nextPage = 0) {
   <main class="mx-auto max-w-7xl space-y-6 px-5 py-8">
     <header>
       <p class="text-sm font-medium text-cyan-300">Star Valor Galactic Intelligence</p>
-      <h1 class="text-3xl font-semibold">Save Explorer</h1>
+      <h1 class="text-3xl font-semibold">Galactic Command</h1>
     </header>
     <form class="flex flex-wrap items-end gap-4 rounded-lg border border-slate-700 p-4" @submit.prevent="upload">
       <label class="grid gap-1 text-sm">Main save <input required name="save" type="file" accept=".dat"></label>
@@ -261,7 +270,8 @@ async function openRecord(number: number, nextPage = 0) {
       </template>
     </section>
     <template v-if="view">
-      <section aria-label="Player metadata" class="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <nav class="flex gap-3" aria-label="Workspace"><button :aria-pressed="workspace === 'Command'" @click="workspace = 'Command'">Command</button><button :aria-pressed="workspace === 'Save Explorer'" @click="workspace = 'Save Explorer'">Save Explorer</button></nav>
+      <section v-if="workspace === 'Save Explorer'" aria-label="Player metadata" class="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <div v-for="key in Object.keys(view.metadata).filter(isDataField)" :key="key" class="rounded border border-slate-800 p-3">
           <span class="text-sm text-slate-400">{{ ({ shipModelID: 'Ship model', savedVersion: 'Game version', baseBuilding: 'Base Building DLC', marketLayout: 'Market layout', info: 'Companion Info' } as Record<string,string>)[key] ?? key }}</span>
           <details v-if="key === 'info'"><summary>File metadata</summary><pre>{{ JSON.stringify(view.metadata[key], null, 2) }}</pre></details>
@@ -272,12 +282,13 @@ async function openRecord(number: number, nextPage = 0) {
       <div class="flex flex-wrap items-center gap-3">
         <label class="flex items-center gap-2"><input type="checkbox" :checked="spoilers" :disabled="busy" @change="toggle"> Show spoilers and raw records</label>
         <span class="text-sm text-slate-400">{{ view.hiddenSectors }} sectors with discovery unconfirmed or false</span>
-        <button :disabled="busy" @click="schema = false">Tables</button>
-        <button v-if="spoilers" :disabled="busy" @click="searchSchema()">Schema</button>
+        <button v-if="workspace === 'Save Explorer'" :disabled="busy" @click="schema = false">Tables</button>
+        <button v-if="spoilers && workspace === 'Save Explorer'" :disabled="busy" @click="searchSchema()">Schema</button>
         <a class="action" :href="base + '/export.json' + exportQuery">Export JSON</a>
         <a v-if="spoilers" class="action" :href="base + '/export.json' + exportQuery + '&raw=true'">Export raw JSON</a>
       </div>
-      <section v-if="!schema && table" class="space-y-3">
+      <Command v-if="workspace === 'Command' && intelligence" :snapshot="intelligence" />
+      <section v-if="workspace === 'Save Explorer' && !schema && table" class="space-y-3">
         <div class="flex flex-wrap items-center gap-3">
           <select v-model="table" aria-label="Table" @change="page = 0; query = ''"><option v-for="(_, name) in view.tables" :key="name">{{ name }}</option></select>
           <input v-model="query" aria-label="Filter table" placeholder="Filter by name or ID" @input="page = 0">
@@ -297,7 +308,7 @@ async function openRecord(number: number, nextPage = 0) {
           <span>Page {{ page + 1 }} · {{ visibleRows.length }} rows</span>
         </div>
       </section>
-      <section v-if="schema" class="space-y-3">
+      <section v-if="workspace === 'Save Explorer' && schema" class="space-y-3">
         <form class="flex flex-wrap gap-3" @submit.prevent="searchSchema()">
           <select v-model="source" aria-label="Record source" :disabled="busy" @change="searchSchema()"><option value="main">Main</option><option v-if="hasInfo" value="info">Companion Info</option></select>
           <input v-model="schemaQuery" aria-label="Search schema" placeholder="Type, member or record ID">
