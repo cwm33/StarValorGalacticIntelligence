@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import TradeAnalyzer from './TradeAnalyzer.vue'
+import HomeAdvisor from './HomeAdvisor.vue'
+import Industry from './Industry.vue'
+import SnapshotComparison from './SnapshotComparison.vue'
 import Atlas from './Atlas.vue'
 import MarketIntelligence from './MarketIntelligence.vue'
 import { label, number, type Snapshot } from './intelligence'
-const props = defineProps<{ snapshot: Snapshot }>()
+const props = defineProps<{ snapshot: Snapshot; baseline?: Snapshot }>()
+defineEmits<{ pin: []; clear: [] }>()
 const tab = ref('Overview')
 const metrics = computed(() => [
   ['Visible sectors', props.snapshot.sectors.length], ['Observed stations', props.snapshot.stations.length],
@@ -12,7 +17,7 @@ const metrics = computed(() => [
 </script>
 <template>
   <section class="space-y-5">
-    <nav class="flex flex-wrap gap-2" aria-label="Intelligence views"><button v-for="t in ['Overview', 'Galactic Atlas', 'Market Intelligence', 'Fleet Command']" :key="t" :aria-pressed="tab === t" :class="tab === t ? 'border-cyan-400 text-cyan-200' : ''" @click="tab = t">{{ t }}</button></nav>
+    <nav class="flex flex-wrap gap-2" aria-label="Intelligence views"><button v-for="t in ['Overview', 'Galactic Atlas', 'Market Intelligence', 'Trade Analyzer', 'Home Sector Advisor', 'Fleet Command', 'Industry', 'Snapshot Comparison']" :key="t" :aria-pressed="tab === t" :class="tab === t ? 'border-cyan-400 text-cyan-200' : ''" @click="tab = t">{{ t }}</button></nav>
     <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-2xl font-semibold">{{ tab }}</h2><p class="text-sm text-slate-400">{{ snapshot.provenance.mechanicsProfile }} · v{{ snapshot.provenance.gameVersion ?? '?' }} · {{ snapshot.provenance.includesSpoilers ? 'Spoilers enabled' : 'Discovered records only' }}</p></div>
     <template v-if="tab === 'Overview'">
       <p class="text-slate-300">{{ snapshot.player.name ?? 'Commander' }} · {{ number(snapshot.player.credits) }} credits · {{ label(snapshot.player.shipModel) }}</p>
@@ -22,6 +27,10 @@ const metrics = computed(() => [
     </template>
     <Atlas v-if="tab === 'Galactic Atlas'" :snapshot="snapshot" />
     <MarketIntelligence v-if="tab === 'Market Intelligence'" :snapshot="snapshot" />
+    <SnapshotComparison v-if="tab === 'Snapshot Comparison'" :snapshot="snapshot" :baseline="baseline" @pin="$emit('pin')" @clear="$emit('clear')" />
+    <Industry v-if="tab === 'Industry'" :snapshot="snapshot" />
+    <TradeAnalyzer v-if="tab === 'Trade Analyzer'" :snapshot="snapshot" />
+    <HomeAdvisor v-if="tab === 'Home Sector Advisor'" :snapshot="snapshot" />
     <section v-if="tab === 'Fleet Command'" class="space-y-4">
       <div class="rounded border border-slate-700 p-5"><h3 class="text-xl">Current ship · {{ label(snapshot.player.shipModel) }}</h3><p class="mt-2 text-sm text-slate-400">{{ snapshot.installedItems.filter(i => i.kind === 'weapon').length }} installed weapon records · {{ snapshot.installedItems.filter(i => i.kind === 'equipment').length }} equipment records. Slot capacity, cargo, crew, drones, DPS and power budget are unknown.</p></div>
       <div class="overflow-auto"><table class="w-full text-sm"><thead><tr><th>Installed item</th><th>Kind</th><th>Slot</th><th>Saved quantity</th><th>Rarity</th><th>Name confidence</th></tr></thead><tbody><tr v-for="(i, n) in snapshot.installedItems" :key="n"><td>{{ label(i.item) }}</td><td>{{ i.kind }}</td><td>{{ number(i.slot) }}</td><td>{{ number(i.quantity) }}</td><td>{{ number(i.rarity) }}</td><td>{{ i.item.confidence }} · {{ i.item.nameSource ?? 'Unknown' }}</td></tr></tbody></table><p v-if="!snapshot.installedItems.length" class="p-5 text-slate-400">No installed loadout records could be extracted.</p></div>

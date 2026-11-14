@@ -41,7 +41,7 @@ public static class IntelligenceProjection
         {
             var ns = Int(r, "itemType") switch { 1 => "weapon", 2 => "equipment", 3 => "commodity", 4 => "ship-model", 5 => "crew", int n => $"item-type-{n}", _ => "unknown-item-type" };
             if (Id(r, "itemID", ns) is { } item && Int(r, "stationID") is int station)
-                inventory.Add(new(item, station, table, Number(r, "stock"), Number(r, "lastStockCount"), Int(r, "rarity"), Source(table, r)));
+                inventory.Add(new(item, station, Text(r, "sourceField") == "market" ? "Legacy station market" : table, Number(r, "stock"), Number(r, "lastStockCount"), Int(r, "rarity"), Source(table, r)));
         }
         var ships = new List<Ship>();
         foreach (var table in new[] { "Player ship", "Sector ships" })

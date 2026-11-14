@@ -120,11 +120,13 @@ public sealed class SaveView
             var id = Field(station, "id");
             if (id is int number) stationIds.Add(number);
             Add("Stations", station, "id factionIndex modelIndex nameIndex sectorIndex discovered level buildingPlanID buildingState");
-            foreach (var item in List(Child(station, "market")).Concat(List(Child(Child(station, "itemStock"), "items"))))
-                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id));
+            foreach (var item in List(Child(station, "market")))
+                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "market"));
+            foreach (var item in List(Child(Child(station, "itemStock"), "items")))
+                Add("Station stock", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "itemStock.items"));
             foreach (var module in List(Child(station, "modules")))
                 foreach (var item in List(Child(module, "persistentItems")))
-                    Add("Station market modules", item, "itemType itemID rarity stock lastStockCount", ("stationID", id));
+                    Add("Station market modules", item, "itemType itemID rarity stock lastStockCount", ("stationID", id), ("sourceField", "modules.persistentItems"), ("moduleRecord", module.Id));
         }
         foreach (var market in List(Child(Child(character, "codex"), "records")))
         {

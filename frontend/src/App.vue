@@ -17,6 +17,7 @@ type RecordSummary = { id: number, type: string, kind: string }
 type RecordDetail = RecordSummary & { fields?: Row, shape?: number[], value?: unknown, items?: unknown[], itemCount?: number }
 
 const intelligence = ref<Snapshot>()
+const baseline = ref<Snapshot>()
 const workspace = ref('Command')
 const id = ref('')
 const view = ref<View>()
@@ -284,10 +285,11 @@ async function openRecord(number: number, nextPage = 0) {
         <span class="text-sm text-slate-400">{{ view.hiddenSectors }} sectors with discovery unconfirmed or false</span>
         <button v-if="workspace === 'Save Explorer'" :disabled="busy" @click="schema = false">Tables</button>
         <button v-if="spoilers && workspace === 'Save Explorer'" :disabled="busy" @click="searchSchema()">Schema</button>
+        <a class="action" :href="base + '/intelligence' + exportQuery" download="galactic-intelligence.json">Export intelligence JSON</a>
         <a class="action" :href="base + '/export.json' + exportQuery">Export JSON</a>
         <a v-if="spoilers" class="action" :href="base + '/export.json' + exportQuery + '&raw=true'">Export raw JSON</a>
       </div>
-      <Command v-if="workspace === 'Command' && intelligence" :snapshot="intelligence" />
+      <Command v-if="workspace === 'Command' && intelligence" :snapshot="intelligence" :baseline="baseline" @pin="baseline = intelligence.provenance.includesSpoilers ? undefined : intelligence" @clear="baseline = undefined" />
       <section v-if="workspace === 'Save Explorer' && !schema && table" class="space-y-3">
         <div class="flex flex-wrap items-center gap-3">
           <select v-model="table" aria-label="Table" @change="page = 0; query = ''"><option v-for="(_, name) in view.tables" :key="name">{{ name }}</option></select>

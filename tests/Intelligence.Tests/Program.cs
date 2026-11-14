@@ -65,6 +65,59 @@ Test("real projection discovery gate protects domain and raw evidence", () => {
     Require(safe.Sectors.Count == 1 && safe.Stations.Count == 0 && full.Sectors.Count == 2 && full.Stations.Count == 1);
     Require(!System.Text.Json.JsonSerializer.Serialize(safe).Contains("SECRET"));
 });
+TradeQuote Quote(string location, double? buy = null, double? sell = null, bool verified = true, double? stock = 10, double? demand = 10,
+    bool? access = true, bool? hostile = false, string ns = "commodity", string source = "Synthetic transaction") =>
+    new(new(ns, 18), location, buy, sell, stock, demand, 2, verified, true, access, hostile, source);
+Test("verified trade respects stock, credits, cargo and existing cargo", () => {
+    var r = TradeAnalyzer.Analyze([Quote("A", buy: 10), Quote("B", sell: 20)], new(35, 10, 4, 8, 2, 3)).Single();
+    Require(r.Quantity == 3 && r.GrossProfit == 30 && r.EstimatedNetProfit == 28 && r.ProfitPerCargoUnit == 5 && r.Executable);
+});
+Test("unverified quotes require opt-in and never become executable", () => {
+    var quotes = new[] { Quote("A", buy: 10, verified: false), Quote("B", sell: 20, verified: false) };
+    Require(TradeAnalyzer.Analyze(quotes, new(100, 20, 0, 10)).Count == 0);
+    Require(!TradeAnalyzer.Analyze(quotes, new(100, 20, 0, 10), true).Single().Executable);
+});
+Test("unknown stock, cargo and travel do not become zero or executable", () => {
+    var r = TradeAnalyzer.Analyze([Quote("A", buy: 10, stock: null), Quote("B", sell: 20)], new(100, null, null, null)).Single();
+    Require(r.Quantity is null && r.GrossProfit is null && r.EstimatedNetProfit is null && r.TravelEffort is null && !r.Executable);
+});
+Test("insufficient credits, full cargo and empty inventories permit zero units", () => {
+    foreach (var limits in new[] { new TradeConstraints(5, 10, 0, null), new TradeConstraints(100, 10, 10, null) }) {
+        var r = TradeAnalyzer.Analyze([Quote("A", buy: 10), Quote("B", sell: 20)], limits).Single(); Require(r.Quantity == 0 && !r.Executable);
+    }
+    Require(TradeAnalyzer.Analyze([Quote("A", buy: 10, stock: 0), Quote("B", sell: 20)], new(100, 10, 0, null)).Single().Quantity == 0);
+});
+Test("hostility and unknown access block executable status", () => {
+    foreach (var destination in new[] { Quote("B", sell: 20, hostile: true), Quote("B", sell: 20, access: null), Quote("B", sell: 20, hostile: null) }) {
+        var r = TradeAnalyzer.Analyze([Quote("A", buy: 10), destination], new(100, 20, 0, 10)).Single(); Require(!r.Executable && r.Warnings.Count > 0);
+    }
+});
+Test("missing and sentinel quotes, namespace collisions and incompatible sources never trade", () => {
+    foreach (var origin in new[] { Quote("A", buy: null), Quote("A", buy: -1), Quote("A", buy: double.NaN), Quote("A", buy: 10, ns: "weapon"), Quote("A", buy: 10, source: "Codex") })
+        Require(TradeAnalyzer.Analyze([origin, Quote("B", sell: 20)], new(100, 20, 0, 10)).Count == 0);
+});
+Test("advisor missing criteria unknown, transparent weights and no negative evidence", () => {
+    var s = Project(Fixture()); var a = HomeAdvisor.Rank(s, new()).Single();
+    Require(a.Score > 0 && a.EvidenceCoverage < 1 && a.Reasons.Single(r => r.Criterion == "Known connectivity").Score is null);
+    Require(a.Reasons.Single(r => r.Criterion == "Equipment availability").Score is null);
+    Require(HomeAdvisor.Rank(s, new(0, 0, 0, 0, 0)).Single().Score is null);
+});
+ProductionRecipe Recipe(string profile = "Galaxy Reforged", string version = "2.251") => new("synthetic-only", profile, version, "Synthetic test; not a game recipe",
+    [new(new("commodity", 1), 3)], [new(new("commodity", 2), 2)]);
+Test("industry catalog calculates known bottlenecks and leaves missing stock unknown", () => {
+    var r = IndustryPlanner.Plan(new("Galaxy Reforged", "2.251", [Recipe()], [new("synthetic-only", 4)], [new(new("commodity", 1), 5)]));
+    Require(r.Resources.Single(x => x.Item.Id == 1).Shortfall == 7 && r.Resources.Single(x => x.Item.Id == 2).Produced == 8);
+    Require(r.Resources.Single(x => x.Item.Id == 2).Available is null && r.Resources.Single(x => x.Item.Id == 2).Shortfall is null);
+});
+Test("industry profile and version mismatch, duplicate resources and invalid quantities rejected", () => {
+    foreach (var recipe in new[] { Recipe("Vanilla"), Recipe(version: "future"), Recipe() with { Inputs = [new(new("commodity", 1), -1)] }, Recipe() with { Inputs = [new(new("commodity", 1), 1), new(new("commodity", 1), 1)] } }) {
+        try { IndustryPlanner.Plan(new("Galaxy Reforged", "2.251", [recipe], [], [])); throw new Exception("Accepted invalid catalog"); }
+        catch (ArgumentException) { }
+    }
+});
+Test("empty industry catalogs never fabricate recipes or stock", () => {
+    var r = IndustryPlanner.Plan(new("Unknown", "future", [], [], [])); Require(r.Resources.Count == 0 && r.Warnings.Count > 0);
+});
 var failed = 0;
 foreach (var (name, body) in tests) { try { body(); Console.WriteLine("PASS " + name); } catch (Exception e) { failed++; Console.Error.WriteLine("FAIL " + name + ": " + e); } }
 Console.WriteLine($"{tests.Count - failed}/{tests.Count} intelligence tests passed (synthetic only).");

@@ -73,6 +73,31 @@ app.MapPost("/api/import", async (HttpRequest request) =>
 
 app.MapGet("/api/{id:guid}/intelligence", (Guid id, bool? spoilers) =>
     Find(id) is { } s ? Results.Ok(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value) : Missing());
+app.MapGet("/api/{id:guid}/trade", (Guid id, bool? spoilers, bool? experimental, string? rankBy) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
+    // Explicit opt-in interpretation only. No inventory, cargo volume, access or routes are fabricated.
+    var quotes = snapshot.Markets.Where(m => m.Source == "Sector prices" && m.SectorId.HasValue)
+        .Select(m => new GalacticIntelligence.TradeQuote(m.Commodity, $"Sector #{m.SectorId}", m.BuyingPrice, m.SellingPrice,
+            null, null, null, false, false, null, null, m.Source)).ToArray();
+    return Results.Ok(new { interpretation = "Experimental: buyingPrice as player cost and sellingPrice as proceeds. Direction is unverified.",
+        opportunities = GalacticIntelligence.TradeAnalyzer.Analyze(quotes,
+            new(snapshot.Player.Credits, null, null, null), experimental == true, rankBy ?? "difference"),
+        note = "Legacy codex observations have no paired price direction and are excluded. No verified transaction quotes are currently extracted." });
+});
+app.MapGet("/api/{id:guid}/advisor", (Guid id, bool? spoilers, double? stations, double? markets, double? equipment, double? ships, double? connectivity) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    return Results.Ok(GalacticIntelligence.HomeAdvisor.Rank(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value,
+        new(stations ?? 1, markets ?? 1, equipment ?? 1, ships ?? 1, connectivity ?? 1)));
+});
+app.MapPost("/api/industry/plan", (GalacticIntelligence.IndustryRequest scenario, HttpRequest request) =>
+{
+    if (request.Headers["X-Star-Valor"] != "scenario") return Results.BadRequest(new { error = "Expected a local planning scenario." });
+    try { return Results.Ok(GalacticIntelligence.IndustryPlanner.Plan(scenario)); }
+    catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+});
 app.MapGet("/api/resolver", () => Results.Ok(catalog.Diagnostics()));
 app.MapGet("/api/{id:guid}/resolver", (Guid id, bool? spoilers) =>
 {

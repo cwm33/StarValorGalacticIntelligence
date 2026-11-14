@@ -5,7 +5,7 @@ const props = defineProps<{ snapshot: Snapshot }>()
 const query = ref(''), discovery = ref('all'), marketsOnly = ref(false)
 const faction = ref(''), selected = ref<number | null>(null)
 const zoom = ref(1), pan = ref({ x: 0, y: 0 })
-let drag: { x: number; y: number; px: number; py: number } | undefined
+let drag: { x: number; y: number; px: number; py: number; sector: number | null } | undefined
 let moved = false
 const stationsBySector = computed(() => {
   const index = new Map<number, Snapshot['stations']>()
@@ -40,14 +40,14 @@ const knownLinks = computed(() => {
   })
 })
 function reset() { zoom.value = 1; pan.value = { x: 0, y: 0 } }
-function start(e: PointerEvent) { if (e.button !== 0) return; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); moved = false; drag = { x: e.clientX, y: e.clientY, px: pan.value.x, py: pan.value.y } }
+function start(e: PointerEvent) { if (e.button !== 0) return; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId); moved = false; drag = { x: e.clientX, y: e.clientY, px: pan.value.x, py: pan.value.y, sector: (e.target as Element).closest('[data-sector]')?.getAttribute('data-sector') != null ? Number((e.target as Element).closest('[data-sector]')!.getAttribute('data-sector')) : null } }
 function move(e: PointerEvent) {
   if (!drag) return
   const box = (e.currentTarget as SVGSVGElement).getBoundingClientRect()
   if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) moved = true
   pan.value = { x: drag.px + (e.clientX - drag.x) * 1000 / box.width, y: drag.py + (e.clientY - drag.y) * 600 / box.height }
 }
-function select(id: number) { if (!moved) selected.value = id }
+function end() { if (!moved && drag?.sector != null) selected.value = drag.sector; drag = undefined }
 watch(() => props.snapshot, () => { selected.value = null; reset() })
 </script>
 <template>
@@ -62,10 +62,10 @@ watch(() => props.snapshot, () => { selected.value = null; reset() })
     <div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
       <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-3">
         <div class="flex gap-2"><button aria-label="Zoom in" @click="zoom = Math.min(12, zoom * 1.4)">+</button><button aria-label="Zoom out" @click="zoom = Math.max(.5, zoom / 1.4)">−</button><button @click="reset">Reset map</button><span class="self-center text-sm text-slate-400">Drag to pan · {{ zoom.toFixed(1) }}×</span></div>
-        <svg class="mt-3 aspect-[5/3] w-full touch-none rounded bg-slate-950" viewBox="0 0 1000 600" role="img" aria-label="Galactic sector map" @wheel.prevent="zoom = Math.min(12, Math.max(.5, zoom * ($event.deltaY > 0 ? .9 : 1.1)))" @pointerdown="start" @pointermove="move" @pointerup="drag = undefined" @pointercancel="drag = undefined">
+        <svg class="mt-3 aspect-[5/3] w-full touch-none rounded bg-slate-950" viewBox="0 0 1000 600" role="img" aria-label="Galactic sector map" @wheel.prevent="zoom = Math.min(12, Math.max(.5, zoom * ($event.deltaY > 0 ? .9 : 1.1)))" @pointerdown="start" @pointermove="move" @pointerup="end" @pointercancel="drag = undefined">
           <g :transform="`translate(${pan.x} ${pan.y}) translate(500 300) scale(${zoom}) translate(-500 -300)`">
             <line v-for="c in knownLinks" :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" stroke="#475569" :stroke-width="1 / zoom" />
-            <g v-for="p in plotted" :key="p.s.id" @click.stop="select(p.s.id)">
+            <g v-for="p in plotted" :key="p.s.id" :data-sector="p.s.id">
               <title>{{ sectorLabel(p.s) }} · Level {{ number(p.s.level) }} · {{ stationsBySector.get(p.s.id)?.length ?? 0 }} observed stations</title>
               <circle :cx="p.x" :cy="p.y" :r="(selected === p.s.id ? 8 : 5) / Math.sqrt(zoom)" :fill="p.s.discovered === true ? (marketSectors.has(p.s.id) ? '#22d3ee' : '#94a3b8') : p.s.spotted === true ? 'transparent' : '#334155'" :stroke="selected === p.s.id ? '#fbbf24' : '#94a3b8'" :stroke-width="1.5 / zoom" class="cursor-pointer" />
             </g>

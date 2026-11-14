@@ -5,7 +5,7 @@ const props = defineProps<{ snapshot: Snapshot }>()
 const query = ref(''), source = ref('Sector prices'), sector = ref(''), station = ref(''), faction = ref(''), sort = ref('commodity'), descending = ref(false), page = ref(0)
 const stationIndex = computed(() => new Map(props.snapshot.stations.map(s => [s.id, s])))
 const sectorIndex = computed(() => new Map(props.snapshot.sectors.map(s => [s.id, s])))
-const inventoryMode = computed(() => source.value === 'Station stock' || source.value === 'Station market modules')
+const inventoryMode = computed(() => source.value === 'Station stock' || source.value === 'Station market modules' || source.value === 'Legacy station market')
 const factions = computed(() => [...new Map(props.snapshot.stations.filter(s => s.faction).map(s => [s.faction!.id, s.faction!])).values()])
 const observations = computed(() => [
   ...props.snapshot.markets.map(m => ({ ...m, identity: m.commodity, stock: null as number | null })),
@@ -43,6 +43,7 @@ const spreads = computed(() => {
 function flags(m: Pick<Market, 'resourceStarved' | 'buyingOverstocked' | 'trading' | 'tradingOverstocked'>) {
   return [['IsResourceStarved', m.resourceStarved], ['IsBuyingOverstocked', m.buyingOverstocked], ['IsTrading', m.trading], ['IsTradingOverstocked', m.tradingOverstocked]].filter(([, v]) => v != null).map(([k, v]) => `${k}=${v}`).join(' · ') || 'Unknown'
 }
+watch(() => props.snapshot, s => { source.value = s.markets.some(m => m.source === 'Sector prices') ? 'Sector prices' : s.markets.some(m => m.source === 'Codex prices') ? 'Codex prices' : s.inventories[0]?.source ?? 'Sector prices' }, { immediate: true })
 watch([query, source, sector, station, faction, sort, descending, () => props.snapshot], () => { page.value = 0 })
 </script>
 <template>
@@ -50,7 +51,7 @@ watch([query, source, sector, station, faction, sort, descending, () => props.sn
     <div class="rounded border border-amber-800 bg-amber-950/20 p-4 text-sm text-amber-200">Observed prices, not verified transaction quotes. Field names retain their serialized meaning; direction and freshness are unverified. Stock sources are separate and never added together. Missing values are unknown. Sector observations cannot be filtered by station faction.</div>
     <div class="flex flex-wrap gap-3">
       <input v-model="query" placeholder="Commodity, equipment or ID" aria-label="Search markets">
-      <select v-model="source" aria-label="Observation source"><option>Sector prices</option><option>Codex prices</option><option>Station stock</option><option>Station market modules</option></select>
+      <select v-model="source" aria-label="Observation source"><option>Sector prices</option><option>Codex prices</option><option>Station stock</option><option>Legacy station market</option><option>Station market modules</option></select>
       <select v-model="sector" aria-label="Market sector"><option value="">All sectors</option><option v-for="s in snapshot.sectors" :key="s.id" :value="String(s.id)">{{ sectorLabel(s) }}</option></select>
       <select v-model="station" aria-label="Market station"><option value="">All stations</option><option v-for="s in snapshot.stations" :key="s.id" :value="String(s.id)">Station #{{ s.id }}</option></select>
       <select v-model="faction" aria-label="Market faction"><option value="">All station factions</option><option v-for="f in factions" :key="f.id" :value="String(f.id)">{{ label(f) }}</option></select>

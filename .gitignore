@@ -6,3 +6,8 @@ src/Api/wwwroot/
 *.dat
 fixtures/
 *.user
+
+**/__pycache__/
+frontend/test-results/
+frontend/playwright-report/
+test-results/

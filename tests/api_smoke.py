@@ -86,6 +86,22 @@ if __name__ == '__main__':
         assert safe['provenance']['includesSpoilers'] is False and safe['connections'] == []
         assert 'Synthetic Sector 35' not in json.dumps(safe)
         assert safe['markets'][0]['priceSemantics'] == 'Unverified'
+        assert safe['inventories'][0]['source'] == ('Station stock' if modern else 'Legacy station market')
+        trade = request(f'/api/{ident}/trade?spoilers=false')
+        assert trade['opportunities'] == []
+        trial = request(f'/api/{ident}/trade?spoilers=false&experimental=true')['opportunities']
+        assert bool(trial) == modern
+        assert all(not r['executable'] and r['quantity'] is None and r['estimatedNetProfit'] is None for r in trial)
+        advisor = request(f'/api/{ident}/advisor?spoilers=false&stations=3&equipment=0')
+        assert len(advisor) == 30 and all(r['evidenceCoverage'] < 1 for r in advisor)
+        scenario = {'profile': 'Galaxy Reforged', 'gameVersion': '2.251', 'recipes': [], 'orders': [], 'available': []}
+        plan = request('/api/industry/plan', json.dumps(scenario).encode(), {'Content-Type': 'application/json', 'X-Star-Valor': 'scenario'})
+        assert plan['resources'] == []
+        for invalid in [dict(scenario, recipes=None), dict(scenario, available=[None])]:
+            try:
+                request('/api/industry/plan', json.dumps(invalid).encode(), {'Content-Type': 'application/json', 'X-Star-Valor': 'scenario'})
+                raise AssertionError('Accepted invalid planning scenario')
+            except urllib.error.HTTPError as e: assert e.code == 400
         assert request(f'/api/{ident}/resolver?spoilers=false')['observed'] is not None
         assert request(f'/api/{ident}/export.json?spoilers=false')['hiddenSectors'] == 6
         for route in ['/schema', '/export.json?raw=true']:
