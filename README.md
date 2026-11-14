@@ -1,6 +1,6 @@
 # Star Valor Galactic Intelligence
 
-A Windows-first, read-only Save Explorer. The ASP.NET Core API and Vue interface run at http://127.0.0.1:5187. The application keeps one imported save pair in memory. Closing the server clears the session.
+A Windows-first, local, read-only galactic intelligence and save exploration application. The ASP.NET Core API and Vue interface run at http://127.0.0.1:5187. The application keeps one imported save pair in memory. Closing the server clears the session.
 
 ## Setup and launch
 
@@ -16,6 +16,14 @@ dotnet run --project src/Api --no-launch-profile
 In Save Explorer, select `SaveGameData_XX.dat` and optionally the matching `SaveGameData_XX_Info.dat` from the game's `Save_Data` directory. Select a mechanics profile if the save's provenance is known. The browser reads the selected files and sends their bytes only to the loopback server. The server can spool large multipart requests into OS temporary storage during import. There is no save writeback or persistent save database.
 
 The default view includes discovered sectors and stations marked discovered within those sectors. The spoiler switch also enables raw Schema search, reference navigation, and raw JSON export. Normalized JSON and table CSV exports follow the current spoiler setting. Table CSV exports the entire selected table. Raw record IDs are graph-local navigation identifiers, distinct from serialized game IDs.
+
+## Galactic Command
+
+After importing a save, Command opens an overview of known sectors, stations, markets and player information. The Galactic Atlas supports search, filters, zoom, pan and sector details. Market Intelligence separates saved price observations from legacy station markets, modern station stock and market modules, and compares only matching price fields. Fleet Command shows extracted installed equipment and weapons with catalog confidence.
+
+Trade Analyzer has **no verified executable quotes** yet. Its optional experimental interpretation produces hypothetical per-item spreads; unsupported quantity, cargo and route calculations remain unknown. Home Sector Advisor ranks observed commercial presence with adjustable weights and transparent evidence coverage. Industry can evaluate your own profile/version-scoped recipes and confirmed resource quantities; no game recipes are bundled. Snapshot Comparison can pin a discovered snapshot in tab memory and compare matching stable records after the next import. Sector discovery and sector-price differences are deferred until cross-save sector identity is verified.
+
+Save Explorer and resolver diagnostics remain available for technical investigation. All Command views honor discovery controls. No jump links, ownership, hostility, DPS or recipes are invented. See [implemented scope and confidence](docs/ROADMAP.md) and [authentic local validation](docs/LOCAL_VALIDATION.md).
 
 ## Recent saves
 
@@ -38,6 +46,7 @@ Optional private JSON files can supply validated mappings through `GameData__Use
 
 ```powershell
 dotnet run --project tests/Regression
+dotnet run --project tests/Intelligence.Tests
 dotnet run --project tests/Regression -- "C:/fixtures/SaveGameData_01.dat" "C:/fixtures/SaveGameData_01_Info.dat" "C:/fixtures/SaveGameData_02.dat" "C:/fixtures/SaveGameData_02_Info.dat"
 ```
 
