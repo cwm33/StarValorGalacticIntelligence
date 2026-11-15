@@ -29,7 +29,7 @@ The 2.251 player's raw ship model ID is 55. Section 12 and the enriched API retu
 | Installed player weapons | 13 / 13 | 11 / 11 |
 | Installed player equipment | 29 / 29 | 33 / 33 |
 
-Two legacy station model identifiers and one newer faction identifier remained unresolved in the visible projections. Station plans and generated names, faction relation endpoints, crew names, and extended mod catalogs require additional evidence. The installed BepInEx plugin directory was empty and no Galaxy Reforged localization file was found in the installation. The Galaxy Reforged profile keeps save-local weapon names and supports explicit, validated overrides.
+Two legacy station model identifiers and one newer faction identifier remained unresolved in the visible projections. Station plans and generated names, faction relation endpoints, crew names, and extended mod catalogs require additional evidence. The installed BepInEx plugin directory was empty and no Galaxy Reforged localization file was found in the installation. Galaxy Reforged now uses the same baseline localization bindings, save-local weapon names and explicit validated overrides. This default follows its gameplay/balance scope; the historical fixtures are not newly identified mod fixtures.
 
 ## Regression results
 

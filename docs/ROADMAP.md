@@ -5,7 +5,7 @@ This sprint extends the existing .NET 10 / ASP.NET Core / Vue 3 / TypeScript / T
 ## Local integration
 
 - The Atlas renders directed, discovery-gated generated links from authentic 2.05 and 2.251 layouts. Sector details show exits and shortest gate paths. The advisor scores reach within two gate jumps and Trade Analyzer displays gate hops for its opt-in indicative spreads.
-- Modern sector summary direction comes from the installed 2.251d implementation. No executable quote is extracted. Galaxy Reforged and unsupported versions retain raw observations without the base-game interpretation.
+- Modern sector summary direction comes from the installed 2.251d implementation. No executable quote is extracted. Galaxy Reforged uses the same baseline interpretation; unsupported versions retain raw observations until their fields are validated.
 - Station inventories retain their original game IDs and join by source graph record within the import. Legacy codex with a missing, negative or ambiguous game ID cannot resolve a location. Snapshot comparison excludes ambiguous station IDs.
 - Fleet Command shows saved cargo and storage, including ship items, base Fleet Commander skill and typed roster records when present. The modern ownership flag identifies player installations in Atlas and Industry. See [Local validation](LOCAL_VALIDATION.md) for actual inputs and gaps.
 
@@ -56,3 +56,12 @@ These are functional, bounded slices, not a declaration that every requested fea
 - `git diff --check`: passed. No proprietary assets, private saves, localization, recipe datasets, overrides or secrets were added.
 
 These results establish implementation behavior on synthetic data, not authentic economic semantics or mod compatibility.
+
+
+## Vanilla-compatible defaults and Arsenal (current)
+
+- Galaxy Reforged now retains normal localization, saved weapon catalog resolution, generated gate routing, market direction, nearby discovery and inventory joins. The supported baseline layouts remain 2.05 and 2.251; profile labels are provenance, with targeted exceptions for established incompatibilities.
+- Arsenal aggregates personal cargo/station storage and fitted weapons/equipment; market/module stock is a separate scope excluded from player totals. It supports name/ID search, rarity/location/type/quantity filters, sorting, pagination, distinct-model counts, stored ships and filtered CSV/JSON exports.
+- The pricing domain and transient API accept user/local-extraction catalogs with exact profile/version, explicit base value, rarity multipliers, replacement/liquidation multipliers and evidence. No authentic pricing data is available in cloud and no prices are bundled. Missing coverage stays unknown. See [item pricing](ITEM_PRICING.md).
+- Station classifications exclude defensive structures, hideouts and gates from economic presence. Raw ownership and state are inspectable; `ownerID == 1` does not verify a player base. Industrial, mining and trading presets expose evidence coverage. Solar/mineral/resource/environment metrics have an extensible domain contract and no guessed decoder mappings.
+- Remaining local validation: controlled ownership/build/state transitions (including the reported HideoutStation #772), subtype service mappings, solar/mineral normalized criteria, fleet loadouts, material subcategories, item modifications, actual replacement/sale mechanics, and populated player-built gates. Private inputs and proprietary extracts remain outside Git. Cloud results are synthetic validation only.
