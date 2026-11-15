@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Decoder;
 using GalacticIntelligence;
 
@@ -30,7 +31,7 @@ Test("sentinel values and missing fields preserved", () => {
     var s = Project(Fixture());
     Require(s.Markets[0].BuyingPrice == -1 && s.Markets[0].TradePrice is null && s.Inventories[0].Stock == 0);
     Require(s.Sectors[0].Level is null && s.Stations[0].Faction is null && s.Connections.Count == 0);
-    Require(s.Markets.All(m => m.PriceSemantics == "Unverified"));
+    Require(s.Markets.Single(m => m.Source == "Sector prices").PriceSemantics.StartsWith("Sector summary"));
 });
 Test("legacy observations join locations without mixing prices and stock", () => {
     var s = Project(Fixture()); var codex = s.Markets.Single(m => m.Source == "Codex prices");
@@ -100,8 +101,8 @@ Test("station graph identity, duplicate game IDs and gate visibility", () => {
     Require(snapshot.Markets.Count == 0);
     Require(snapshot.Ships.Single().Model?.Id == 12 && snapshot.Ships.Single().Role == "Player fleet");
     Require(snapshot.Stations.Count == 2 && !snapshot.Index.Stations.ContainsKey(123));
-    Require(snapshot.Stations.Single(x => x.Kind == "Jumpgate").PlayerOwned == true);
-    Require(snapshot.Stations.Single(x => x.Kind == "Station").PlayerOwned == false);
+    Require(snapshot.Stations.Single(x => x.Kind == "Jumpgate").PlayerOwned is null);
+    Require(snapshot.Stations.Single(x => x.Kind == "Commercial").PlayerOwned == false);
     Require(snapshot.Inventories.Single().StationRecord == a.Ref && snapshot.Inventories.Single().SectorId == 0);
     Require(snapshot.Connections.Single().To == 3 && snapshot.Routes.Find(0, 3)!.SequenceEqual(new[] { 0, 3 }));
     Require(snapshot.Routes.Find(3, 0) is null && snapshot.Routes.Find(0, 1) is null && snapshot.Routes.Find(0, 2) is null);
@@ -170,6 +171,102 @@ Test("large observed markets rank a bounded top set", () => {
     var quotes = Enumerable.Range(0, 2000).Select(i => Quote($"Sector {i}", buy: i + 1, sell: i + 2, verified: false, stock: null)).ToArray();
     var r = TradeAnalyzer.Analyze(quotes, new(1000, null, null, null), true);
     Require(r.Count == 100 && r[0].DifferencePerItem == 2000 && r.All(o => !o.Executable));
+});
+
+Test("Galaxy Reforged retains verified gate routing and market directions", () => {
+    var v = Fixture(); v.Metadata["currentSectorIndex"] = 0; v.Tables["Sectors"].Add(Row(("sectorIndex", 1)));
+    v.Tables["Generated jumpgates"] = [Row(("sectorIndex", 0), ("connectedSector", 1))];
+    var s = Project(v);
+    Require(s.Connections.Single().Confidence == "Verified" && s.Routes.Find(0, 1)!.Length == 2);
+    Require(s.Markets[0].PriceSemantics.StartsWith("Sector summary"));
+    Require(NearbyMarkets.Find(s, 1, null).Buys.Length > 0);
+});
+Test("ambiguous ownership, economic versus defensive station classification", () => {
+    var v = Fixture();
+    v.Tables["Stations"] = [Row(("id", 772), ("sectorIndex", 0), ("ownerID", 1), ("type", "HideoutStation"), ("factionIndex", -1), ("buildingState", 0), ("state", 3)),
+        Row(("id", 773), ("sectorIndex", 0), ("ownerID", 1), ("type", "TurretStation"))];
+    var s = Project(v);
+    Require(s.Stations.All(x => x.PlayerOwned is null));
+    Require(s.Stations.Select(x => x.Kind).SequenceEqual(new[] { "Hideout", "Turret" }));
+    Require(HomeAdvisor.Rank(s, new()).Single().Reasons.Single(r => r.Criterion == "Station presence").Score is null);
+    Require(StationSemantics.Classify("Station") == "Commercial");
+    Require(StationSemantics.Classify("UnrecognizedStation") == "Specialized");
+    foreach (var preset in new[] { "industrial", "mining" }) {
+        var candidate = HomeAdvisor.Rank(s, AdvisorWeights.Preset(preset)).Single();
+        Require(candidate.EvidenceCoverage < 1);
+        Require(candidate.Reasons.Where(r => r.Criterion is "Solar output" or "Mineral richness" or "Mining potential").All(r => r.Score is null));
+    }
+});
+Test("Arsenal namespaces, aggregation, rarity, storage and projection deduplication", () => {
+    var v = Fixture();
+    v.Tables["Player cargo"] = [Row(("record", 1), ("itemType", 2), ("itemID", 18), ("qnt", 3), ("rarity", 1), ("stockStationID", 9), ("storageKind", "Station storage")),
+        Row(("record", 2), ("itemType", 2), ("itemID", 18), ("qnt", 4), ("rarity", 1), ("stockStationID", 9), ("storageKind", "Station storage")),
+        Row(("record", 3), ("itemType", 2), ("itemID", 18), ("qnt", 2), ("rarity", 2), ("storageKind", "Aboard")),
+        Row(("record", 4), ("itemType", 1), ("itemID", 18), ("qnt", 1), ("rarity", 1), ("storageKind", "Aboard"))];
+    v.Tables["Player cargo"].Add(v.Tables["Player cargo"][0]);
+    var s = Project(v); var r = Arsenal.Build(s);
+    Require(r.KnownQuantity == 10 && r.DistinctModels == 2);
+    Require(r.Items.Single(i => i.Storage == "Station storage #9").Quantity == 7);
+    Require(r.KnownReplacementValue is null && r.ReplacementCoverage == 0);
+    PricingCatalog catalog = new("2.251", "Galaxy Reforged", "Synthetic only", "Synthetic", [new("equipment", 18, 100, new Dictionary<int,double> { [1] = 1, [2] = 2 }, 1, .5)]);
+    r = Arsenal.Build(s, catalog);
+    Require(r.KnownReplacementValue == 1100 && r.KnownLiquidationValue == 550 && r.ReplacementCoverage == 2);
+    Require(r.Items.Single(i => i.Item.Namespace == "equipment" && i.Rarity == 2).ReplacementPerItem == 200);
+    foreach (var invalid in new[] { catalog with { GameVersion = "future" }, catalog with { MechanicsProfile = "Vanilla" }, catalog with { Items = [catalog.Items[0], catalog.Items[0]] } }) {
+        try { Arsenal.Build(s, invalid); throw new Exception("Accepted invalid price catalog"); } catch (ArgumentException) { }
+    }
+    var noRarity = catalog with { Items = [catalog.Items[0] with { RarityMultipliers = new Dictionary<int,double>() }] };
+    Require(Arsenal.Build(s, noRarity).KnownReplacementValue is null);
+});
+Test("same equipment IDs resolve across fitted, cargo, station stock and modules", () => {
+    var directory = Path.Combine(Path.GetTempPath(), "gi-names-" + Guid.NewGuid()); Directory.CreateDirectory(Path.Combine(directory, "Language"));
+    try {
+        // Real localization framing with entirely synthetic names and descriptions.
+        File.WriteAllText(Path.Combine(directory, "Language", "english_main.txt"), "[0] UI|\n[1] Weapons|\n000 Synthetic Weapon|\n[2] Equipment|\n000 Synthetic Equipment|\n001 Description|\n[3] Commodities|\n000 Synthetic Commodity|\n001 Description|\n");
+        var settings = new Dictionary<string,string?> { ["GameData:InstallationDirectory"] = directory };
+        var v = Fixture();
+        ((Dictionary<int, string>)v.WeaponNames)[0] = "Saved Weapon";
+        v.Tables["Installed equipment"] = [Row(("equipmentID", 0), ("qnt", 1))];
+        v.Tables["Installed weapons"] = [Row(("weaponIndex", 0))];
+        foreach (var t in new[] { "Player cargo", "Station stock", "Station market modules" })
+            v.Tables[t] = [Row(("itemID", 0), ("itemType", 2)), Row(("itemID", 0), ("itemType", 3)), Row(("itemID", 99999), ("itemType", 2))];
+        var catalog = new GameDataCatalog(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        catalog.Enrich(v, "Galaxy Reforged");
+        Require(((CatalogName)v.Tables["Installed equipment"][0]["equipmentIDResolution"]!).Name == "Synthetic Equipment");
+        foreach (var t in new[] { "Player cargo", "Station stock", "Station market modules" }) {
+            Require(((CatalogName)v.Tables[t][0]["itemIDResolution"]!).Name == "Synthetic Equipment");
+            Require(((CatalogName)v.Tables[t][1]["itemIDResolution"]!).Name == "Synthetic Commodity");
+            Require(((CatalogName)v.Tables[t][2]["itemIDResolution"]!).Name is null);
+        }
+        Require(((CatalogName)v.Tables["Installed weapons"][0]["weaponIndexResolution"]!).Name == "Saved Weapon");
+        var mod = Path.Combine(directory, "mod.json"); var user = Path.Combine(directory, "user.json");
+        File.WriteAllText(mod, """{"schemaVersion":1,"mappings":[{"category":"equipment","id":0,"name":"Mod equipment","callerValidated":true}]}""");
+        settings["GameData:GalaxyReforgedOverrides"] = mod;
+        catalog = new GameDataCatalog(new ConfigurationBuilder().AddInMemoryCollection(settings).Build()); catalog.Enrich(v, "Galaxy Reforged");
+        Require(((CatalogName)v.Tables["Player cargo"][0]["itemIDResolution"]!).Name == "Mod equipment");
+        File.WriteAllText(user, """{"schemaVersion":1,"mappings":[{"category":"equipment","id":0,"name":"User equipment","callerValidated":true}]}""");
+        settings["GameData:UserOverrides"] = user;
+        catalog = new GameDataCatalog(new ConfigurationBuilder().AddInMemoryCollection(settings).Build()); catalog.Enrich(v, "Galaxy Reforged");
+        Require(((CatalogName)v.Tables["Installed equipment"][0]["equipmentIDResolution"]!).Name == "User equipment");
+    } finally { Directory.Delete(directory, true); }
+});
+
+Test("raw industrial metrics require validated normalization before scoring", () => {
+    var s = Project(Fixture());
+    s = s with { Sectors = [s.Sectors[0] with { Industry = new(SolarOutput: 400, MineralRichness: 20, Source: "Synthetic raw units") }] };
+    Require(HomeAdvisor.Rank(s, AdvisorWeights.Preset("industrial")).Single().Reasons.Single(r => r.Criterion == "Solar output").Score is null);
+    s = s with { Sectors = [s.Sectors[0] with { Industry = new(Suitability: new(Solar: 75, NormalizationSource: "Synthetic normalized score")) }] };
+    Require(HomeAdvisor.Rank(s, AdvisorWeights.Preset("industrial")).Single().Reasons.Single(r => r.Criterion == "Solar output").Score == 75);
+});
+Test("missing quantities and pricing attributes never invent total values", () => {
+    var v = Fixture(); v.Tables["Installed equipment"] = [Row(("equipmentID", 4), ("rarity", 1))];
+    var s = Project(v);
+    PricingCatalog c = new("2.251", "Galaxy Reforged", "Synthetic", "Synthetic", [new("equipment", 4, 100, new Dictionary<int,double> { [1] = 2 }, 1)]);
+    var r = Arsenal.Build(s, c); var item = r.Items.Single(i => i.Item.Namespace == "equipment");
+    Require(item.BaseValue == 100 && item.ReplacementPerItem == 200 && item.ReplacementValue is null && item.LiquidationValue is null);
+    Require(r.UnknownQuantityRows == 1 && r.MissingReplacementValues == 1 && r.KnownReplacementValue is null);
+    c = c with { Items = [c.Items[0] with { BaseValue = double.MaxValue }] };
+    Require(Arsenal.Build(s, c).Items.Single(i => i.Item.Namespace == "equipment").ReplacementPerItem is null);
 });
 var failed = 0;
 foreach (var (name, body) in tests) { try { body(); Console.WriteLine("PASS " + name); } catch (Exception e) { failed++; Console.Error.WriteLine("FAIL " + name + ": " + e); } }

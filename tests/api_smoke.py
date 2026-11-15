@@ -142,15 +142,34 @@ if __name__ == '__main__':
     snapshot = request(f'/api/{mod}/intelligence')
     assert snapshot['provenance']['mechanicsProfile'] == 'Galaxy Reforged'
     assert len(snapshot['connections']) == 29
-    assert all(link['confidence'] == 'Observed' for link in snapshot['connections'])
-    assert request(f'/api/{mod}/route?from=0&to=2')['path'] is None
-    assert snapshot['markets'][0]['priceSemantics'] == 'Unverified'
-    assert request(f'/api/{mod}/trade?experimental=true')['opportunities'] == []
+    assert all(link['confidence'] == 'Verified' for link in snapshot['connections'])
+    assert request(f'/api/{mod}/route?from=0&to=2')['path'] == [0, 1, 2]
+    assert snapshot['markets'][0]['priceSemantics'].startswith('Sector summary')
+    assert request(f'/api/{mod}/trade?experimental=true')['opportunities']
     catalog = request(f'/api/{mod}/resolver')['catalog']
     if catalog['categories'].get('commodity', 0) and all(s['kind'] == 'VanillaLocalization' for s in catalog['sources']):
         commodity = snapshot['markets'][0]['commodity']
         assert commodity['id'] == 18 and commodity['name'] == 'Energy Cells'
-        assert commodity['confidence'] == 'BaseGameReference'
+        assert commodity['confidence'] == 'Resolved'
         stock = next(row['item'] for row in snapshot['inventories'] if row['item']['namespace'] == 'commodity')
-        assert stock['name'] == 'Energy Cells' and stock['confidence'] == 'BaseGameReference'
-    print('Galaxy Reforged profile remains unverified')
+        assert stock['name'] == 'Energy Cells' and stock['confidence'] == 'Resolved'
+    print('Galaxy Reforged uses baseline catalog, gate and market semantics')
+
+    arsenal = request(f'/api/{mod}/arsenal')
+    assert arsenal['knownReplacementValue'] is None and arsenal['knownLiquidationValue'] is None
+    assert arsenal['knownQuantity'] == 3
+    assert arsenal['missingReplacementValues'] == arsenal['playerGroups']
+    full_arsenal = request(f'/api/{mod}/arsenal?spoilers=true')
+    assert len(full_arsenal['items']) > len(arsenal['items'])
+    assert full_arsenal['knownQuantity'] == arsenal['knownQuantity']
+    pricing = {'gameVersion': '2.251', 'mechanicsProfile': 'Galaxy Reforged', 'source': 'Synthetic only', 'confidence': 'Synthetic', 'items': [{'namespace': 'equipment', 'id': 29, 'baseValue': 100, 'rarityMultipliers': {'1': 2}, 'replacementMultiplier': 1, 'liquidationMultiplier': 0.5}]}
+    priced = request(f'/api/{mod}/arsenal/value', json.dumps(pricing).encode(), {'Content-Type': 'application/json'})
+    assert priced['knownReplacementValue'] == 200 and priced['knownLiquidationValue'] == 100
+    assert all(i['scope'] != 'Player' or i['storage'] != 'Station storage #31' or i['item']['namespace'] == 'ship-model' for i in priced['items'])
+    pricing['gameVersion'] = 'future'
+    try:
+        request(f'/api/{mod}/arsenal/value', json.dumps(pricing).encode(), {'Content-Type': 'application/json'})
+        raise AssertionError('Accepted mismatched catalog')
+    except urllib.error.HTTPError as e: assert e.code == 400
+    assert request(f'/api/{mod}/advisor?preset=industrial')[0]['reasons']
+    print('Arsenal quantities, missing pricing, catalog valuation and validation passed')

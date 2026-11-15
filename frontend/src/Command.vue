@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import Arsenal from './Arsenal.vue'
 import TradeAnalyzer from './TradeAnalyzer.vue'
 import HomeAdvisor from './HomeAdvisor.vue'
 import Industry from './Industry.vue'
@@ -17,7 +18,7 @@ const metrics = computed(() => [
 </script>
 <template>
   <section class="space-y-5">
-    <nav class="flex flex-wrap gap-2" aria-label="Intelligence views"><button v-for="t in ['Overview', 'Galactic Atlas', 'Market Intelligence', 'Trade Analyzer', 'Home Sector Advisor', 'Fleet Command', 'Industry', 'Snapshot Comparison']" :key="t" :aria-pressed="tab === t" :class="tab === t ? 'border-cyan-400 text-cyan-200' : ''" @click="tab = t">{{ t }}</button></nav>
+    <nav class="flex flex-wrap gap-2" aria-label="Intelligence views"><button v-for="t in ['Overview', 'Galactic Atlas', 'Market Intelligence', 'Trade Analyzer', 'Home Sector Advisor', 'Fleet Command', 'Arsenal & Inventory', 'Industry', 'Snapshot Comparison']" :key="t" :aria-pressed="tab === t" :class="tab === t ? 'border-cyan-400 text-cyan-200' : ''" @click="tab = t">{{ t }}</button></nav>
     <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-2xl font-semibold">{{ tab }}</h2><p class="text-sm text-slate-400">{{ snapshot.provenance.mechanicsProfile }} · v{{ snapshot.provenance.gameVersion ?? '?' }} · {{ snapshot.provenance.includesSpoilers ? 'Spoilers enabled' : 'Discovered records only' }}</p></div>
     <template v-if="tab === 'Overview'">
       <p class="text-slate-300">{{ snapshot.player.name ?? 'Commander' }} · {{ number(snapshot.player.credits) }} credits · {{ label(snapshot.player.shipModel) }}</p>
@@ -25,6 +26,7 @@ const metrics = computed(() => [
       <div class="grid gap-4 md:grid-cols-2"><button class="p-5 text-left" @click="tab = 'Galactic Atlas'"><strong>Plan your next exploration</strong><p class="mt-2 text-sm text-slate-400">Locate known sectors, inspect station presence and find observed markets.</p></button><button class="p-5 text-left" @click="tab = 'Market Intelligence'"><strong>Research market differences</strong><p class="mt-2 text-sm text-slate-400">Compare saved price fields while keeping inventory and codex observations separate.</p></button></div>
       <details class="rounded border border-slate-700 p-4"><summary>Data confidence and missing evidence</summary><ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-amber-200"><li v-for="w in snapshot.warnings" :key="w">{{ w }}</li></ul><p class="mt-3 text-sm text-slate-400">{{ snapshot.provenance.sectorIdentity }}. Import time is not observation time.</p></details>
     </template>
+    <Arsenal v-if="tab === 'Arsenal & Inventory'" :snapshot="snapshot" />
     <Atlas v-if="tab === 'Galactic Atlas'" :snapshot="snapshot" />
     <MarketIntelligence v-if="tab === 'Market Intelligence'" :snapshot="snapshot" />
     <SnapshotComparison v-if="tab === 'Snapshot Comparison'" :snapshot="snapshot" :baseline="baseline" @pin="$emit('pin')" @clear="$emit('clear')" />

@@ -3,11 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { number, type Snapshot } from './intelligence'
 const props = defineProps<{ snapshot: Snapshot }>()
 type Candidate = { sectorId: number; name: string | null; score: number | null; evidenceCoverage: number; reasons: { criterion: string; weight: number; score: number | null; reason: string }[] }
+const preset = ref('custom')
 const weights = ref({ stations: 1, markets: 1, equipment: 1, ships: 1, connectivity: 1 }), candidates = ref<Candidate[]>([]), selected = ref<number[]>([]), query = ref(''), error = ref(''), busy = ref(false)
-watch([weights, () => props.snapshot], async (_, __, cleanup) => {
+watch([weights, preset, () => props.snapshot], async (_, __, cleanup) => {
   const abort = new AbortController(); cleanup(() => abort.abort()); error.value = ''; busy.value = true
   try {
     const params = new URLSearchParams({ spoilers: String(props.snapshot.provenance.includesSpoilers), ...Object.fromEntries(Object.entries(weights.value).map(([k, v]) => [k, String(v)])) })
+    if (preset.value !== 'custom') params.set('preset', preset.value)
     const response = await fetch(`/api/${props.snapshot.provenance.snapshotId}/advisor?${params}`, { signal: abort.signal })
     if (!response.ok) throw new Error('Advisor unavailable. Import the save again.')
     candidates.value = await response.json()
@@ -21,7 +23,9 @@ const compared = computed(() => candidates.value.filter(c => selected.value.incl
 <template>
   <section class="space-y-4">
     <p class="text-slate-300">Rank observed commercial presence for headquarters research. Scores reflect your preferences and available evidence, not a verified optimal base location. Sector level is not treated as technology. Missing criteria are excluded, and coverage shows the weight of criteria with evidence.</p>
-    <div class="grid gap-3 sm:grid-cols-5"><label v-for="(_, k) in weights" :key="k" class="grid gap-2 rounded border border-slate-700 p-3 text-sm">{{ k }} · {{ weights[k] }}<input v-model.number="weights[k]" type="range" min="0" max="10" step="1" :aria-label="k + ' scoring weight'"></label></div>
+    <label>Scoring preset <select v-model="preset"><option value="custom">Custom commercial weights</option><option value="industrial">Industrial headquarters</option><option value="mining">Mining outpost</option><option value="trading">Commercial / trading hub</option></select></label>
+    <p class="text-sm text-slate-400">Industrial and mining presets include unknown solar and mineral criteria in evidence coverage. These criteria do not affect scores until validated metrics are available. Turrets, hideouts and gates do not count as economic infrastructure.</p>
+    <div v-if="preset === 'custom'" class="grid gap-3 sm:grid-cols-5"><label v-for="(_, k) in weights" :key="k" class="grid gap-2 rounded border border-slate-700 p-3 text-sm">{{ k }} · {{ weights[k] }}<input v-model.number="weights[k]" type="range" min="0" max="10" step="1" :aria-label="k + ' scoring weight'"></label></div>
     <p v-if="error" role="alert" class="text-red-300">{{ error }}</p><p v-if="busy" role="status">Updating scores…</p>
     <div v-if="compared.length" class="grid gap-3 md:grid-cols-3"><article v-for="c in compared" :key="c.sectorId" class="space-y-3 rounded border border-cyan-800 p-4"><h3 class="font-semibold">{{ c.name ?? `Sector #${c.sectorId}` }}</h3><p>{{ number(c.score) }} / 100 · {{ number(c.evidenceCoverage * 100) }}% coverage</p><div v-for="r in c.reasons" :key="r.criterion" class="text-sm"><p>{{ r.criterion }}: {{ number(r.score) }} <span v-if="r.weight">(weight {{ r.weight }})</span></p><p class="text-xs text-slate-400">{{ r.reason }}</p></div></article></div>
     <input v-model="query" placeholder="Filter candidate sectors" aria-label="Filter headquarters candidates">

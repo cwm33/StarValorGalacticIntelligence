@@ -45,3 +45,9 @@ test('schema source changes do not turn missing inventories into losses', () => 
   expect(result.changes).toHaveLength(1)
   expect(result.changes[0]).toMatchObject({ category: 'Faction relationship', delta: 15 })
 })
+
+
+test('profile metadata alone does not add compatibility warnings', () => {
+  const before = snapshot(), after = snapshot(); before.provenance.mechanicsProfile = 'Vanilla'
+  expect(compareSnapshots(before, after).warnings).toEqual(compareSnapshots(after, after).warnings)
+})

@@ -106,11 +106,22 @@ app.MapGet("/api/{id:guid}/trade", (Guid id, bool? spoilers, bool? experimental,
             }),
         note = "Legacy codex observations have no paired price direction and are excluded. No verified transaction quotes are currently extracted." });
 });
-app.MapGet("/api/{id:guid}/advisor", (Guid id, bool? spoilers, double? stations, double? markets, double? equipment, double? ships, double? connectivity) =>
+app.MapGet("/api/{id:guid}/arsenal", (Guid id, bool? spoilers) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    return Results.Ok(GalacticIntelligence.Arsenal.Build(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value));
+});
+app.MapPost("/api/{id:guid}/arsenal/value", (Guid id, bool? spoilers, GalacticIntelligence.PricingCatalog pricing) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    try { return Results.Ok(GalacticIntelligence.Arsenal.Build(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value, pricing)); }
+    catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
+});
+app.MapGet("/api/{id:guid}/advisor", (Guid id, bool? spoilers, double? stations, double? markets, double? equipment, double? ships, double? connectivity, string? preset) =>
 {
     if (Find(id) is not { } s) return Missing();
     return Results.Ok(GalacticIntelligence.HomeAdvisor.Rank(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value,
-        new(stations ?? 1, markets ?? 1, equipment ?? 1, ships ?? 1, connectivity ?? 1)));
+        preset is not null ? GalacticIntelligence.AdvisorWeights.Preset(preset) : new(stations ?? 1, markets ?? 1, equipment ?? 1, ships ?? 1, connectivity ?? 1)));
 });
 app.MapPost("/api/industry/plan", (GalacticIntelligence.IndustryRequest scenario, HttpRequest request) =>
 {
