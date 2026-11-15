@@ -4,7 +4,7 @@ using GalacticIntelligence.GameData;
 
 sealed record CatalogName(int RawId, string Category, string? Name, string Status, string? Source, int? Section)
 {
-    public string DisplayName => Status == "BaseGameReference" ? $"{Name} (base-game reference)" : Name ?? $"Unknown {Category switch
+    public string DisplayName => Name ?? $"Unknown {Category switch
     {
         "ship-model" => "Ship",
         "station-model" => "Station Model",
@@ -88,9 +88,9 @@ sealed class GameDataCatalog
             warnings.Add("English localization unavailable. Set GameData__InstallationDirectory and restart.");
         if (mechanics == "Unknown") warnings.Add("Mechanics profile is unknown. Local base-game mappings may differ from this save.");
         if (mechanics == "Galaxy Reforged")
-            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
+            warnings.Add("Galaxy Reforged catalog compatibility is unverified. Commodities, ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         if (!string.IsNullOrEmpty(version) && version is not ("2.05" or "2.251"))
-            warnings.Add("The save version is outside the validated mapping range. Ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
+            warnings.Add("The save version is outside the validated mapping range. Commodities, ship models and installed player equipment may show a base-game name for reference. Other names require a validated override or a saved weapon name.");
         return new { snapshot.Sources, categories = counts, entries = counts.Values.Sum(), snapshot.Issues, warnings };
     }
 
@@ -127,7 +127,7 @@ sealed class GameDataCatalog
                 status = "Resolved";
             }
 
-            else if ((allowBaseReference || category == IdentifierCategory.ShipModel) &&
+            else if ((allowBaseReference || category == IdentifierCategory.ShipModel || category == IdentifierCategory.Commodity) &&
                 source?.Kind == SourceKind.VanillaLocalization)
             {
                 name = lookup.Name;

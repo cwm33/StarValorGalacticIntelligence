@@ -43,9 +43,9 @@ app.MapPost("/api/import", async (HttpRequest request) =>
         var form = await request.ReadFormAsync(request.HttpContext.RequestAborted);
         var save = form.Files.GetFile("save");
         var info = form.Files.GetFile("info");
-        var match = Regex.Match(save?.FileName ?? "", @"^SaveGameData_([0-9]+)[.]dat$", RegexOptions.IgnoreCase);
+        var match = Regex.Match(save?.FileName ?? "", @"^SaveGameData_([0-9]+)(?:_Auto)?[.]dat$", RegexOptions.IgnoreCase);
         if (save is null || !match.Success)
-            return Results.BadRequest(new { error = "Choose a main SaveGameData_XX.dat file." });
+            return Results.BadRequest(new { error = "Choose SaveGameData_XX.dat or SaveGameData_XX_Auto.dat." });
         if (info is not null && !info.FileName.Equals(
             $"SaveGameData_{match.Groups[1].Value}_Info.dat", StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest(new { error = "The companion Info file must match the main save slot." });
@@ -79,6 +79,15 @@ app.MapGet("/api/{id:guid}/route", (Guid id, bool? spoilers, int from, int to) =
     var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
     var path = snapshot.Routes.Find(from, to);
     return Results.Ok(new { path, jumps = path?.Length - 1 });
+});
+app.MapGet("/api/{id:guid}/nearby-markets", (Guid id, bool? spoilers, int? jumps, string? query, double? driveRange) =>
+{
+    if (Find(id) is not { } s) return Missing();
+    var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
+    if (driveRange is double range && (!double.IsFinite(range) || range < 0))
+        return Results.BadRequest(new { error = "Enter a finite, nonnegative jump-drive range." });
+    var result = GalacticIntelligence.NearbyMarkets.Find(snapshot, Math.Clamp(jumps ?? 4, 0, 12), query, driveRange);
+    return Results.Ok(new { result.Buys, result.Sells, result.Trades });
 });
 app.MapGet("/api/{id:guid}/trade", (Guid id, bool? spoilers, bool? experimental, string? rankBy) =>
 {

@@ -28,7 +28,7 @@ public static class IntelligenceProjection
         var verifiedLayout = profile is "Vanilla" or "Unknown";
         var sectors = Rows("Sectors").Where(r => Int(r, "sectorIndex").HasValue).Select(r => new Sector(
             Int(r, "sectorIndex")!.Value, Text(r, "name"), Number(r, "x"), Number(r, "y"), Int(r, "level"),
-            Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r))).ToArray();
+            Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r), Number(r, "x") + Number(r, "incX"), Number(r, "y") + Number(r, "incY"))).ToArray();
         var stations = Rows("Stations").Where(r => Int(r, "id").HasValue && Int(r, "sectorIndex").HasValue)
             .Select(r => new Station(Int(r, "id")!.Value, Int(r, "sectorIndex")!.Value, Id(r, "factionIndex", "faction"),
                 Int(r, "modelIndex"), Int(r, "buildingPlanID"), Bool(r, "discovered"), Int(r, "level"), Source("Stations", r),
@@ -38,11 +38,11 @@ public static class IntelligenceProjection
             .ToDictionary(station => station.Evidence.GraphRecord!.Value);
         var sectorIds = sectors.Select(sector => sector.Id).ToHashSet();
         var gates = Rows("Generated jumpgates")
-            .Where(r => verifiedLayout && version is "2.05" or "2.251" &&
+            .Where(r =>
                 Int(r, "sectorIndex") is int from && Int(r, "connectedSector") is int to &&
                 from != to && sectorIds.Contains(from) && sectorIds.Contains(to))
             .Select(r => new JumpConnection(Int(r, "sectorIndex")!.Value, Int(r, "connectedSector")!.Value,
-                "Verified", Source("Generated jumpgates", r))).ToArray();
+                verifiedLayout && version is ("2.05" or "2.251") ? "Verified" : "Observed", Source("Generated jumpgates", r))).ToArray();
         var stationIndex = stations.Where(s => s.Id >= 0).GroupBy(s => s.Id).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single());
         var markets = new List<MarketObservation>();
         foreach (var table in new[] { "Sector prices", "Codex prices" })
@@ -83,7 +83,7 @@ public static class IntelligenceProjection
             "Relation endpoints are preserved separately from faction display indexes; no hostility is inferred." }).ToList();
         if (stations.GroupBy(s => s.Id).Any(g => g.Count() > 1)) warnings.Add("Duplicate station IDs excluded from location joins.");
         return new(new(snapshotId, importedAt, version, profile, Bool(m, "baseBuilding"), spoilers),
-            new(Text(m, "player"), Number(m, "credits"), Int(m, "level"), Id(m, "shipModelID", "ship-model"), Int(m, "fleetCommander")),
+            new(Text(m, "player"), Number(m, "credits"), Int(m, "level"), Id(m, "shipModelID", "ship-model"), Int(m, "fleetCommander"), Int(m, "currentSectorIndex")),
             sectors, stations, markets, inventory, ships, installed, relations, gates, warnings)
         {
             Cargo = Rows("Player cargo").Select(r => (Row: r, Item: StockItem(r)))

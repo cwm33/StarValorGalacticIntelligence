@@ -4,7 +4,7 @@ A Windows-first, local, read-only galactic intelligence and save exploration app
 
 ## Setup and launch
 
-Install the .NET 10 SDK and Node.js 22.12+ (or a newer supported Node.js release). Double-click `Launch.cmd`, then open http://127.0.0.1:5187. Press Ctrl+C in the launcher window to stop. The launcher restores dependencies and builds the frontend. Once dependencies are installed, use the build and run commands below for local development.
+Install the .NET 10 SDK and Node.js 22.12+ (or a newer supported Node.js release). Double-click `Launch.cmd` or run `Launch.ps1`. The launcher opens http://127.0.0.1:5187 in your default browser when the app is ready. Press Ctrl+C in the launcher window to stop. The launcher restores dependencies and builds the frontend. Once dependencies are installed, use the build and run commands below for local development.
 
 ```powershell
 npm --prefix frontend ci
@@ -13,7 +13,7 @@ dotnet build
 dotnet run --project src/Api --no-launch-profile
 ```
 
-In Save Explorer, select `SaveGameData_XX.dat` and optionally the matching `SaveGameData_XX_Info.dat` from the game's `Save_Data` directory. Select a mechanics profile if the save's provenance is known. The browser reads the selected files and sends their bytes only to the loopback server. The server can spool large multipart requests into OS temporary storage during import. There is no save writeback or persistent save database.
+In Save Explorer, select a manual save (`SaveGameData_XX.dat`) or autosave (`SaveGameData_XX_Auto.dat`). You can also select the slot's optional `SaveGameData_XX_Info.dat` from the game's `Save_Data` directory. Select a mechanics profile if the save's provenance is known. The browser reads the selected files and sends their bytes only to the loopback server. The server can spool large multipart requests into OS temporary storage during import. There is no save writeback or persistent save database.
 
 The default view includes discovered sectors and stations marked discovered within those sectors. The spoiler switch also enables raw Schema search, reference navigation, and raw JSON export. Normalized JSON and table CSV exports follow the current spoiler setting. Table CSV exports the entire selected table. Raw record IDs are graph-local navigation identifiers, distinct from serialized game IDs.
 

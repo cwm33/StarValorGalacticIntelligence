@@ -4,16 +4,35 @@ public sealed class GateRoutes
 {
     private readonly HashSet<int> sectors;
     private readonly ILookup<int, int> exits;
+    private readonly Dictionary<int, (double X, double Y)> positions = new();
+    private readonly Dictionary<int, int[]> driveExits = new();
+    private readonly double driveRange;
 
-    public GateRoutes(IEnumerable<Sector> sectors, IEnumerable<JumpConnection> connections)
+    public GateRoutes(IEnumerable<Sector> sectors, IEnumerable<JumpConnection> connections, double driveRange = 0)
     {
+        this.driveRange = driveRange;
+        if (driveRange > 0)
+            foreach (var sector in sectors)
+                if (sector.RealX is double x && sector.RealY is double y)
+                    positions[sector.Id] = (x, y);
         this.sectors = sectors.Select(s => s.Id).ToHashSet();
         exits = connections.Where(c => c.Confidence == "Verified" && c.From != c.To &&
             this.sectors.Contains(c.From) && this.sectors.Contains(c.To))
             .Select(c => (c.From, c.To)).Distinct().OrderBy(c => c.To).ToLookup(c => c.From, c => c.To);
     }
 
-    public IEnumerable<int> Exits(int sector) => exits[sector];
+    public IEnumerable<int> Exits(int sector)
+    {
+        if (!positions.TryGetValue(sector, out var origin)) return exits[sector];
+        if (!driveExits.TryGetValue(sector, out var neighbors))
+        {
+            neighbors = positions.Where(p => p.Key != sector &&
+                Math.Sqrt(Math.Pow(p.Value.X - origin.X, 2) + Math.Pow(p.Value.Y - origin.Y, 2)) <= driveRange)
+                .Select(p => p.Key).Union(exits[sector]).Order().ToArray();
+            driveExits.Add(sector, neighbors);
+        }
+        return neighbors;
+    }
 
     // Stop at the requested depth for the advisor's local reach calculation.
     public IEnumerable<(int Sector, int Jumps)> Reach(int from, int maxJumps)
@@ -26,7 +45,7 @@ public sealed class GateRoutes
         {
             yield return step;
             if (step.Jumps >= maxJumps) continue;
-            foreach (var neighbor in exits[step.Sector])
+            foreach (var neighbor in Exits(step.Sector))
                 if (visited.Add(neighbor)) queue.Enqueue((neighbor, step.Jumps + 1));
         }
     }

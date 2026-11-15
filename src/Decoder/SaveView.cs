@@ -119,13 +119,16 @@ public sealed class SaveView
                 if (!spoilers) continue;
             }
             visible.Add(index);
-            Add("Sectors", sector, "name x y level discovered spotted population", ("sectorIndex", index));
+            Add("Sectors", sector, "name x y incX incY level discovered spotted population", ("sectorIndex", index));
             foreach (var price in List(Child(Child(sector, "marketPriceControl"), "prices")))
                 Add("Sector prices", price, "itemID buyingPrice sellingPrice tradePrice IsBuyingOverstocked IsResourceStarved IsTrading IsTradingOverstocked", ("sectorIndex", index));
             foreach (var actor in List(Child(sector, "aiChars")))
                 if (Child(actor, "shipData") is { } ship)
                     Add("Sector ships", ship, "shipModelID", ("sectorIndex", index), ("factionIndex", Field(actor, "factionIndex")));
         }
+        if (Field(root, "currentSectorIndex") is int current && visible.Contains(current))
+            result.Metadata["currentSectorIndex"] = current;
+
         foreach (var index in visible.Order())
             foreach (var gate in List(Child(sectors[index], "jumpGates")).DistinctBy(gate => gate.Id))
             {

@@ -199,7 +199,7 @@ async function openRecord(number: number, nextPage = 0) {
     <details :open="!view" class="rounded-lg border border-slate-700 p-3">
       <summary class="cursor-pointer font-medium">{{ view ? 'Import another save / recent saves' : 'Import a save' }}</summary>
     <form class="mt-3 flex flex-wrap items-end gap-4 rounded-lg border border-slate-700 p-4" @submit.prevent="upload">
-      <label class="grid gap-1 text-sm">Main save <input required name="save" type="file" accept=".dat"></label>
+      <label class="grid gap-1 text-sm">Manual save or autosave <input required name="save" type="file" accept=".dat"></label>
       <label class="grid gap-1 text-sm">Companion Info (optional) <input name="info" type="file" accept=".dat"></label>
       <label class="grid gap-1 text-sm">Mechanics profile <select name="mechanics"><option>Unknown</option><option>Vanilla</option><option>Galaxy Reforged</option></select></label>
       <button :disabled="busy" type="submit">Import save</button>

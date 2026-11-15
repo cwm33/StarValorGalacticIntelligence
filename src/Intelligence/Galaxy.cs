@@ -9,7 +9,7 @@ public sealed record Evidence(string Source, int? GraphRecord, IReadOnlyDictiona
 public sealed record Provenance(string SnapshotId, DateTimeOffset ImportedAt, string? GameVersion,
     string MechanicsProfile, bool? BaseBuilding, bool IncludesSpoilers, string SectorIdentity = "Save-list index; cross-save stability unverified");
 public sealed record Sector(int Id, string? Name, double? X, double? Y, int? Level, bool? Discovered,
-    bool? Spotted, double? Population, Evidence Evidence);
+    bool? Spotted, double? Population, Evidence Evidence, double? RealX = null, double? RealY = null);
 public sealed record Station(int Id, int SectorId, Identity? Faction, int? ModelId, int? BuildingPlanId,
     bool? Discovered, int? Level, Evidence Evidence, string Kind = "Station", bool? PlayerOwned = null);
 public sealed record FactionRelation(int From, int To, double? Value, Evidence Evidence);
@@ -22,7 +22,7 @@ public sealed record MarketObservation(Identity Commodity, string Source, int? S
     Evidence Evidence, string PriceSemantics = "Unverified");
 public sealed record Ship(Identity? Model, string Role, int? SectorId, Identity? Faction, Evidence Evidence);
 public sealed record InstalledItem(Identity Item, string Kind, int? Slot, double? Quantity, int? Rarity, Evidence Evidence);
-public sealed record Player(string? Name, double? Credits, int? Level, Identity? ShipModel, int? FleetCommanderBase = null);
+public sealed record Player(string? Name, double? Credits, int? Level, Identity? ShipModel, int? FleetCommanderBase = null, int? CurrentSectorId = null);
 public sealed record JumpConnection(int From, int To, string Confidence, Evidence Evidence);
 
 public sealed record GalaxySnapshot(Provenance Provenance, Player Player, IReadOnlyList<Sector> Sectors,

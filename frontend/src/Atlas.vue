@@ -64,14 +64,21 @@ function sectorName(id: number) {
   const sector = props.snapshot.sectors.find(s => s.id === id)
   return sector ? sectorLabel(sector) : 'Sector #' + id
 }
+const playerSector = computed(() => props.snapshot.player.currentSectorId)
+const playerDistance = computed(() => {
+  const origin = props.snapshot.sectors.find(s => s.id === playerSector.value)
+  const target = current.value
+  if (origin?.realX == null || origin.realY == null || target?.realX == null || target.realY == null) return null
+  return Math.hypot(target.realX - origin.realX, target.realY - origin.realY)
+})
 const knownLinks = computed(() => {
   const sectors = new Map(filtered.value.map(s => [s.id, s]))
-  const edges = new Map(props.snapshot.connections.filter(c => c.confidence === 'Verified').map(c => [c.from + ':' + c.to, c]))
+  const edges = new Map(props.snapshot.connections.map(c => [c.from + ':' + c.to, c]))
   return [...edges.values()].flatMap(c => {
     const reciprocal = edges.has(c.to + ':' + c.from)
     if (reciprocal && c.from > c.to) return []
     const a = sectors.get(c.from), b = sectors.get(c.to)
-    return a?.x != null && a.y != null && b?.x != null && b.y != null ? [{ a: point(a), b: point(b), key: c.from + ":" + c.to, reciprocal }] : []
+    return a?.x != null && a.y != null && b?.x != null && b.y != null ? [{ a: point(a), b: point(b), key: c.from + ":" + c.to, reciprocal, observed: c.confidence !== 'Verified', nearPlayer: c.from === playerSector.value || c.to === playerSector.value }] : []
   })
 })
 function reset() { zoom.value = 1; pan.value = { x: 0, y: 0 } }
@@ -98,23 +105,31 @@ watch(() => props.snapshot, () => { selected.value = null; destination.value = n
       <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-3">
         <div class="flex gap-2"><button aria-label="Zoom in" @click="zoom = Math.min(12, zoom * 1.4)">+</button><button aria-label="Zoom out" @click="zoom = Math.max(.5, zoom / 1.4)">−</button><button @click="reset">Reset map</button><span class="self-center text-sm text-slate-400">Drag to pan · {{ zoom.toFixed(1) }}×</span></div>
         <svg class="mt-3 aspect-[5/3] w-full touch-none rounded bg-slate-950" viewBox="0 0 1000 600" role="img" aria-label="Galactic sector map" @wheel.prevent="zoom = Math.min(12, Math.max(.5, zoom * ($event.deltaY > 0 ? .9 : 1.1)))" @pointerdown="start" @pointermove="move" @pointerup="end" @pointercancel="drag = undefined">
-          <defs><marker id="gate-direction" viewBox="0 0 10 10" refX="15" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" /></marker></defs>
+          <defs><marker id="gate-direction" viewBox="0 0 10 10" refX="15" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker></defs>
           <g :transform="`translate(${pan.x} ${pan.y}) translate(500 300) scale(${zoom}) translate(-500 -300)`">
-            <line v-for="c in knownLinks" :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" stroke="#64748b" :marker-end="c.reciprocal ? undefined : 'url(#gate-direction)'" :stroke-width="1 / zoom" />
-            <g v-for="p in plotted" :key="p.s.id" :data-sector="p.s.id">
-              <title>{{ sectorLabel(p.s) }} · Level {{ number(p.s.level) }} · {{ stationsBySector.get(p.s.id)?.length ?? 0 }} observed stations</title>
+            <line v-for="c in knownLinks" data-gate-link :key="c.key" :x1="c.a.x" :y1="c.a.y" :x2="c.b.x" :y2="c.b.y" :stroke="c.nearPlayer ? '#5eead4' : '#a78bfa'" vector-effect="non-scaling-stroke" stroke-linecap="round" pointer-events="none" :stroke-dasharray="c.observed ? '6 4' : undefined" :marker-end="c.reciprocal ? undefined : 'url(#gate-direction)'" :stroke-width="c.nearPlayer ? 4 : 3" />
+            <g v-for="p in plotted" :key="p.s.id" :data-sector="p.s.id" :data-player-sector="p.s.id === playerSector ? true : undefined">
+              <title>{{ sectorLabel(p.s) }}{{ p.s.id === playerSector ? ' · Player location' : '' }} · Level {{ number(p.s.level) }} · {{ stationsBySector.get(p.s.id)?.length ?? 0 }} observed stations</title>
+              <rect v-if="p.s.id === playerSector" :x="p.x - 10 / Math.sqrt(zoom)" :y="p.y - 10 / Math.sqrt(zoom)" :width="20 / Math.sqrt(zoom)" :height="20 / Math.sqrt(zoom)" :transform="`rotate(45 ${p.x} ${p.y})`" fill="none" stroke="#5eead4" stroke-width="2" vector-effect="non-scaling-stroke" pointer-events="none" />
               <circle :cx="p.x" :cy="p.y" :r="(selected === p.s.id ? 8 : 5) / Math.sqrt(zoom)" :fill="p.s.discovered === true ? (marketSectors.has(p.s.id) ? '#22d3ee' : '#94a3b8') : p.s.spotted === true ? 'transparent' : '#334155'" :stroke="selected === p.s.id ? '#fbbf24' : '#94a3b8'" :stroke-width="1.5 / zoom" class="cursor-pointer" />
             </g>
           </g>
         </svg>
         <p v-if="!plotted.length" class="p-4 text-slate-400">No matching sectors with known coordinates.</p>
-        <p class="mt-2 text-xs text-slate-400">{{ filtered.length - plotted.length }} matching sectors lack coordinates. Cyan marks an observed market. No geographic jump links are inferred.</p>
+        <ul class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-300" aria-label="Map legend">
+          <li v-if="knownLinks.length" class="flex items-center gap-2"><span class="w-6 border-t-[3px] border-violet-400"></span>{{ knownLinks.length }} jumpgate links</li>
+          <li v-if="knownLinks.some(link => link.observed)" class="flex items-center gap-2"><span class="w-6 border-t-[3px] border-dashed border-violet-400"></span>Saved links, travel unverified</li>
+          <li class="flex items-center gap-2"><span class="size-2.5 rotate-45 border-2 border-teal-300"></span>Player location</li>
+          <li class="flex items-center gap-2"><span class="size-2 rounded-full bg-cyan-400"></span>Market</li>
+        </ul>
+        <p v-if="!knownLinks.length && plotted.length" class="mt-2 text-xs text-slate-400">No saved gate links connect the sectors shown.</p>
         <label class="mt-3 grid gap-1 text-sm">Select a sector (keyboard accessible)<select :value="selected ?? ''" @change="selected = ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value)"><option value="">Choose sector</option><option v-for="s in filtered" :key="s.id" :value="s.id">{{ sectorLabel(s) }} #{{ s.id }}</option></select></label>
       </div>
       <aside class="space-y-3 rounded-xl border border-slate-700 p-4">
         <template v-if="current">
-          <h3 class="text-xl font-semibold">{{ sectorLabel(current) }}</h3>
+          <h3 class="text-xl font-semibold">{{ sectorLabel(current) }}</h3><p v-if="current.id === playerSector" class="text-sm text-teal-300">Player location at save time</p>
           <p class="text-slate-400">Sector #{{ current.id }} · ({{ number(current.x) }}, {{ number(current.y) }})</p>
+          <p v-if="playerDistance != null && current.id !== playerSector">Direct distance from saved sector � {{ playerDistance.toFixed(1) }} pc</p>
           <p>Level {{ number(current.level) }} · Population {{ number(current.population) }}</p>
           <p>Saved gate exits · {{ exits.length ? exits.map(sectorName).join(', ') : 'None visible' }}</p>
           <label class="grid gap-1 text-sm">Gate route destination<select v-model="destination"><option :value="null">Choose destination</option><option v-for="s in snapshot.sectors.filter(s => s.id !== current!.id)" :key="s.id" :value="s.id">{{ sectorLabel(s) }} #{{ s.id }}</option></select></label>
