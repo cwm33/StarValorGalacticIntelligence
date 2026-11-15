@@ -106,8 +106,20 @@ git status --short
 
 ## Item valuation and industrial follow-up
 
-Use the [item pricing procedure](ITEM_PRICING.md) to extract/validate private catalogs without inventing sell multipliers. Confirm identical equipment IDs in fitted, aboard, stored and market contexts. Verify the reported hideout against a before/after player construction sequence before assigning ownership or state semantics. Find solar/mineral/resource fields by tracing installed code and matching controlled save/UI observations; record units and a documented normalization before filling suitability scores. The current decoder leaves these criteria unknown for all profiles.
+Use the [item pricing procedure](ITEM_PRICING.md) to extract/validate private catalogs without inventing sell multipliers. Confirm identical equipment IDs in fitted, aboard, stored and market contexts. Verify the reported hideout against a before/after player construction sequence before assigning ownership or state semantics. Find solar/mineral/resource fields by tracing installed code and matching controlled save/UI observations; record units and a documented normalization before filling suitability scores. The 2.251d evidence below now supplies solar, mineral and known deposit data.
 
 ## Cloud regression handoff (2026-11-15)
 
 For the vanilla-compatible intelligence and Arsenal change: full .NET 10 solution build passed with no warnings/errors; 26 resolver tests, 25 intelligence/analytics tests, synthetic decoder regressions, frontend TypeScript check and production build, both-layout API smoke checks, and all 8 Playwright tests passed. Browser coverage includes 2,000 synthetic sectors, Galaxy Reforged routes, Arsenal filters, rarity valuation, CSV/JSON downloads and industrial preset unknowns. API checks cover discovery-safe/full Arsenal separation and mismatched catalog rejection. No private saves, installed game binaries or authentic price tables were available for this run; historical installed-game findings above remain historical evidence.
+
+
+## 2.251d Arsenal and compatibility validation
+
+- The newest private main save matched the requested level, ship model and four fleet members. Independent raw-graph counts matched Arsenal with 91 stored weapons across 31 saved models and 142 stored equipment units across 72 IDs. Every stored weapon and equipment group resolved by name. Fitted gear and market stock remain separate.
+- The private catalog covered all 159 stored gear groups. Arsenal exposes rarity-adjusted base value by model, rarity and storage. Replacement and liquidation remain unknown. Catalogs and reports with private data stay outside Git.
+- `CargoSystem.StashItem` uses -2 for commodities, -3 for weapons and -4 for equipment. Unexpected category/code combinations preserve the original code.
+- The reported hideout has `state = 3` (wrecked), `HideoutType.None`, faction -1 and owner 1. `StationCapture` can assign ownership and then dismantle an existing hideout. `HideoutStation.SetNewOwner` resets its type. That path is consistent with the record. The exact history remains unknown, and the app shows it as a wreck.
+- `TSector.SolarOutput` uses saved background sun size. Pitch Black is zero. The solar generator uses that factor directly. The displayed mineral factor comes from saved `mineralLevel`, which influences asteroid and ore generation. The Advisor scales those factors to 0–100 and weights them in its industrial and mining presets. Mining also favors large asteroids with known positive deposits, saturating at three. Scanned deposit quantities and visible asteroid fields remain observations. Sustained yield depends on active modules and live game state.
+- Galaxy Reforged profile imports used ordinary names, market directions and gate routing. The installed plugin folder was empty. Runtime mod price settings remain unverified.
+
+The local solution and frontend builds, 26 resolver tests, 27 Intelligence tests, both authentic paired decoder regressions, API smoke and 8 browser tests passed. An additional browser pass loaded the private catalog, verified filtered Arsenal JSON/CSV exports, checked the industrial Advisor and a safe gate route, and confirmed raw export still requires spoilers. All 293 hashed installation and save inputs were byte-identical after validation.

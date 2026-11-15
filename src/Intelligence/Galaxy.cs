@@ -13,6 +13,10 @@ public sealed record Sector(int Id, string? Name, double? X, double? Y, int? Lev
 public sealed record Station(int Id, int SectorId, Identity? Faction, int? ModelId, int? BuildingPlanId,
     bool? Discovered, int? Level, Evidence Evidence, string Kind = "Station", bool? PlayerOwned = null)
 {
+    public string? OperationState => Evidence.Raw.GetValueOrDefault("state") switch
+    {
+        0 => "Normal", 1 => "Disabled", 3 => "Wrecked", 4 => "Destroyed", _ => null
+    };
     public string OwnershipConfidence => PlayerOwned == true ? "Verified" : PlayerOwned == false ? "Non-player owner field" : "Unverified";
     public bool? Operational => null; // buildingState/state enum semantics require controlled validation.
 }

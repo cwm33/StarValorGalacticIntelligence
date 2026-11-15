@@ -65,3 +65,9 @@ These results establish implementation behavior on synthetic data, not authentic
 - The pricing domain and transient API accept user/local-extraction catalogs with exact profile/version, explicit base value, rarity multipliers, replacement/liquidation multipliers and evidence. No authentic pricing data is available in cloud and no prices are bundled. Missing coverage stays unknown. See [item pricing](ITEM_PRICING.md).
 - Station classifications exclude defensive structures, hideouts and gates from economic presence. Raw ownership and state are inspectable; `ownerID == 1` does not verify a player base. Industrial, mining and trading presets expose evidence coverage. Solar/mineral/resource/environment metrics have an extensible domain contract and no guessed decoder mappings.
 - Remaining local validation: controlled ownership/build/state transitions (including the reported HideoutStation #772), subtype service mappings, solar/mineral normalized criteria, fleet loadouts, material subcategories, item modifications, actual replacement/sale mechanics, and populated player-built gates. Private inputs and proprietary extracts remain outside Git. Cloud results are synthetic validation only.
+
+
+## Installed-game Arsenal and industry validation
+
+- Arsenal displays rarity-adjusted base value for spare gear, coverage and filtered subtotals by model, rarity or storage. The read-only extractor supports build 26582067 and binds catalogs to the source snapshot. Live replacement and liquidation still require transaction inputs.
+- The 2.251d Advisor scores saved solar and mineral factors and known large-asteroid deposits. The Atlas reports observed deposits and flags wrecked hideouts. Sustained yield remains unknown.

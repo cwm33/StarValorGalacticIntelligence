@@ -4,16 +4,30 @@ public sealed record ItemPrice(string Namespace, int Id, double BaseValue,
     IReadOnlyDictionary<int, double> RarityMultipliers, double? ReplacementMultiplier = null,
     double? LiquidationMultiplier = null);
 public sealed record PricingCatalog(string GameVersion, string MechanicsProfile, string Source,
-    string Confidence, IReadOnlyList<ItemPrice> Items, int SchemaVersion = 1);
+    string Confidence, IReadOnlyList<ItemPrice> Items, int SchemaVersion = 1, string? SaveSha256 = null);
 public sealed record ArsenalItem(Identity Item, int? Rarity, string Storage, string Scope, bool Fitted,
     double? Quantity, int Records, IReadOnlyList<Evidence> Evidence, double? BaseValue = null,
     double? ReplacementPerItem = null, double? LiquidationPerItem = null,
     double? ReplacementValue = null, double? LiquidationValue = null,
+    double? RarityValue = null, double? RarityTotal = null,
     string PriceConfidence = "Unknown", string? PriceSource = null);
 public sealed record ArsenalReport(IReadOnlyList<ArsenalItem> Items, int DistinctModels,
     double? KnownQuantity, int UnknownQuantityRows, int ReplacementCoverage, int LiquidationCoverage,
     double? KnownReplacementValue, double? KnownLiquidationValue, string TotalsScope = "Player items only; known priced subset; station market observations excluded")
 {
+    private IEnumerable<ArsenalItem> StoredGear => Items.Where(i =>
+        i.Scope == "Player" && !i.Fitted && i.Item.Namespace is ("weapon" or "equipment"));
+    public int PricedGearGroups => StoredGear.Count(i => i.RarityTotal.HasValue);
+    public int StoredGearGroups => StoredGear.Count();
+    public double? StoredGearBaseValue
+    {
+        get
+        {
+            if (PricedGearGroups == 0) return null;
+            var total = StoredGear.Sum(i => i.RarityTotal ?? 0);
+            return double.IsFinite(total) ? total : null;
+        }
+    }
     public int PlayerGroups => Items.Count(i => i.Scope == "Player");
     public int MissingReplacementValues => PlayerGroups - ReplacementCoverage;
     public int MissingLiquidationValues => PlayerGroups - LiquidationCoverage;
@@ -50,9 +64,10 @@ public static class Arsenal
                 if (price is null) return row;
                 // Rarity is independent of modifications. No implicit rarity or sell multiplier.
                 double? factor = row.Rarity is int rarity && price.RarityMultipliers.TryGetValue(rarity, out var f) ? f : null;
-                var replacement = Finite(factor * price.BaseValue * price.ReplacementMultiplier);
+                var rarityValue = Finite(factor * price.BaseValue);
+                var replacement = Finite(rarityValue * price.ReplacementMultiplier);
                 var liquidation = Finite(factor * price.BaseValue * price.LiquidationMultiplier);
-                return row with { BaseValue = price.BaseValue, ReplacementPerItem = replacement, LiquidationPerItem = liquidation,
+                return row with { BaseValue = price.BaseValue, RarityValue = rarityValue, RarityTotal = Finite(rarityValue * row.Quantity), ReplacementPerItem = replacement, LiquidationPerItem = liquidation,
                     ReplacementValue = Finite(replacement * row.Quantity), LiquidationValue = Finite(liquidation * row.Quantity),
                     PriceConfidence = catalog!.Confidence, PriceSource = catalog.Source };
             }).OrderBy(e => e.Item.Namespace).ThenBy(e => e.Item.Id).ThenBy(e => e.Rarity).ThenBy(e => e.Storage).ToArray();

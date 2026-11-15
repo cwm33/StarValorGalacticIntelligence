@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Net;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -57,9 +58,11 @@ app.MapPost("/api/import", async (HttpRequest request) =>
             return SaveDecoder.Read(stream);
         }
         var graph = Decode(save);
+        using var fingerprintInput = save.OpenReadStream();
+        var saveSha256 = Convert.ToHexString(SHA256.HashData(fingerprintInput));
         var companion = info is null ? null : Decode(info);
         var safe = catalog.Enrich(SaveView.Create(graph, companion, mechanics, false), mechanics);
-        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe, catalog, DateTimeOffset.UtcNow));
+        Volatile.Write(ref current, new Session(Guid.NewGuid(), graph, companion, mechanics, safe, catalog, DateTimeOffset.UtcNow, saveSha256));
         return Results.Ok(new { id = current.Id, view = safe, hasInfo = companion is not null });
     }
     catch (Exception e) when (e is IOException or InvalidDataException or
@@ -114,6 +117,8 @@ app.MapGet("/api/{id:guid}/arsenal", (Guid id, bool? spoilers) =>
 app.MapPost("/api/{id:guid}/arsenal/value", (Guid id, bool? spoilers, GalacticIntelligence.PricingCatalog pricing) =>
 {
     if (Find(id) is not { } s) return Missing();
+    if (pricing.SaveSha256 is { } expected && !string.Equals(expected, s.SaveSha256, StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { error = "This pricing catalog was generated for a different save snapshot." });
     try { return Results.Ok(GalacticIntelligence.Arsenal.Build(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value, pricing)); }
     catch (ArgumentException e) { return Results.BadRequest(new { error = e.Message }); }
 });
@@ -199,14 +204,15 @@ sealed class Session
     public Graph Main { get; }
     public Graph? Info { get; }
     public string Mechanics { get; }
+    public string SaveSha256 { get; }
     public SaveView Safe { get; }
     public DateTimeOffset ImportedAt { get; }
     public Lazy<SaveView> Full { get; }
     public Lazy<GalacticIntelligence.GalaxySnapshot> SafeIntelligence { get; }
     public Lazy<GalacticIntelligence.GalaxySnapshot> FullIntelligence { get; }
-    public Session(Guid id, Graph main, Graph? info, string mechanics, SaveView safe, GameDataCatalog catalog, DateTimeOffset importedAt)
+    public Session(Guid id, Graph main, Graph? info, string mechanics, SaveView safe, GameDataCatalog catalog, DateTimeOffset importedAt, string saveSha256)
     {
-        Id = id; Main = main; Info = info; Mechanics = mechanics; Safe = safe; ImportedAt = importedAt;
+        Id = id; Main = main; Info = info; Mechanics = mechanics; Safe = safe; ImportedAt = importedAt; SaveSha256 = saveSha256;
         Full = new(() => catalog.Enrich(SaveView.Create(main, info, mechanics, true), mechanics));
         SafeIntelligence = new(() => IntelligenceProjection.Create(safe, id.ToString(), importedAt, false));
         FullIntelligence = new(() => IntelligenceProjection.Create(Full.Value, id.ToString(), importedAt, true));

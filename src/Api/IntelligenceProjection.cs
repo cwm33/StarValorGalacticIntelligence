@@ -25,14 +25,33 @@ public static class IntelligenceProjection
         var m = view.Metadata;
         var version = Text(m, "savedVersion");
         var profile = Text(m, "mechanics") ?? "Unknown";
+        var fields = Rows("Asteroid fields").ToLookup(row => Int(row, "sectorIndex"));
+        var deposits = Rows("Asteroid deposits").ToLookup(row => Int(row, "sectorIndex"));
+        IndustrialMetrics? Industry(Dictionary<string, object?> row)
+        {
+            if (version != "2.251") return null;
+            var type = Int(row, "sectorType");
+            double? solar = type switch { 3 => 0, >= 0 and <= 4 => Number(row, "sunSize"), _ => null };
+            var minerals = Number(row, "mineralLevel");
+            var knownDeposits = deposits[Int(row, "sectorIndex")].Where(r => Number(r, "quantity") is >= 0).ToArray();
+            var nonempty = knownDeposits.Where(r => Number(r, "quantity") > 0).Select(r => Int(r, "asteroidRecord")).Distinct().Count();
+            return new(ResourceDeposits: knownDeposits.Length > 0 ? knownDeposits.Sum(r => Number(r, "quantity")!.Value) : null,
+                SolarOutput: solar, MineralRichness: minerals,
+                ObservedAsteroidFields: fields[Int(row, "sectorIndex")].Count(),
+                Environment: type switch { 0 => "Normal", 1 => "Nebula", 2 => "Asteroid rush", 3 => "Pitch black", 4 => "Ship graveyard", _ => null },
+                Source: "Star Valor 2.251d sector fields", Confidence: "Verified layout",
+                Suitability: new(Percent(solar), Percent(minerals), knownDeposits.Length > 0 ? Math.Min(100, nonempty * 100d / 3) : null, NormalizationSource: "Saved 0–1 factor scaled to 0–100"));
+        }
+        static double? Percent(double? factor) => factor is >= 0 and <= 1 ? factor * 100 : null;
+
         var sectors = Rows("Sectors").Where(r => Int(r, "sectorIndex").HasValue).Select(r => new Sector(
             Int(r, "sectorIndex")!.Value, Text(r, "name"), Number(r, "x"), Number(r, "y"), Int(r, "level"),
-            Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r), Number(r, "x") + Number(r, "incX"), Number(r, "y") + Number(r, "incY"))).ToArray();
+            Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r), Number(r, "x") + Number(r, "incX"), Number(r, "y") + Number(r, "incY"), Industry(r))).ToArray();
         var stations = Rows("Stations").Where(r => Int(r, "id").HasValue && Int(r, "sectorIndex").HasValue)
             .Select(r => new Station(Int(r, "id")!.Value, Int(r, "sectorIndex")!.Value, Id(r, "factionIndex", "faction"),
                 Int(r, "modelIndex"), Int(r, "buildingPlanID"), Bool(r, "discovered"), Int(r, "level"), Source("Stations", r),
                 StationSemantics.Classify(Text(r, "type")),
-                Int(r, "ownerID") == 1 ? null : Int(r, "ownerID") is not null ? false : null)).ToArray();
+                Int(r, "ownerID") == 0 ? false : null)).ToArray();
         var stationRecords = stations.Where(station => station.Evidence.GraphRecord.HasValue)
             .ToDictionary(station => station.Evidence.GraphRecord!.Value);
         var sectorIds = sectors.Select(sector => sector.Id).ToHashSet();
@@ -87,10 +106,19 @@ public static class IntelligenceProjection
         {
             Cargo = Rows("Player cargo").Select(r => (Row: r, Item: StockItem(r)))
                 .Where(entry => entry.Item is not null)
-                .Select(entry => new CargoItem(entry.Item!, Number(entry.Row, "qnt"), Int(entry.Row, "rarity"), Text(entry.Row, "storageKind") ?? "Unknown", Source("Player cargo", entry.Row)))
+                .Select(entry => new CargoItem(entry.Item!, Number(entry.Row, "qnt"), Int(entry.Row, "rarity"), CargoStorage(entry.Row), Source("Player cargo", entry.Row)))
                 .ToArray()
         };
     }
+    static string CargoStorage(Dictionary<string, object?> row) => (Int(row, "stockStationID"), Int(row, "itemType")) switch
+    {
+        (-2, 3) => "Commodity stash",
+        (-3, 1) => "Weapon stash",
+        (-4, 2) => "Equipment stash",
+        (int n, _) when n < -1 => $"Unmapped storage ({n})",
+        _ => Text(row, "storageKind") ?? "Unknown"
+    };
+
     static string? Text(Dictionary<string, object?> row, string key) => row.GetValueOrDefault(key) is { } value ? Convert.ToString(value, CultureInfo.InvariantCulture) : null;
     static bool? Bool(Dictionary<string, object?> row, string key) => row.GetValueOrDefault(key) as bool?;
     static int? Int(Dictionary<string, object?> row, string key) => row.GetValueOrDefault(key) is int n ? n : null;

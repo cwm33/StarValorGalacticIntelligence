@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { label, number, type Identity, type Evidence, type Snapshot } from './intelligence'
 const props = defineProps<{ snapshot: Snapshot }>()
-type Row = { item: Identity; rarity: number | null; storage: string; scope: string; fitted: boolean; quantity: number | null; records: number; evidence: Evidence[]; baseValue: number | null; replacementPerItem: number | null; liquidationPerItem: number | null; replacementValue: number | null; liquidationValue: number | null; priceConfidence: string; priceSource: string | null }
-type Report = { items: Row[]; distinctModels: number; knownQuantity: number | null; playerGroups: number; missingReplacementValues: number; missingLiquidationValues: number; unknownQuantityRows: number; replacementCoverage: number; liquidationCoverage: number; knownReplacementValue: number | null; knownLiquidationValue: number | null; totalsScope: string }
+type Row = { item: Identity; rarity: number | null; storage: string; scope: string; fitted: boolean; quantity: number | null; records: number; evidence: Evidence[]; baseValue: number | null; rarityValue: number | null; rarityTotal: number | null; replacementPerItem: number | null; liquidationPerItem: number | null; replacementValue: number | null; liquidationValue: number | null; priceConfidence: string; priceSource: string | null }
+type Report = { storedGearBaseValue: number | null; pricedGearGroups: number; storedGearGroups: number; items: Row[]; distinctModels: number; knownQuantity: number | null; playerGroups: number; missingReplacementValues: number; missingLiquidationValues: number; unknownQuantityRows: number; replacementCoverage: number; liquidationCoverage: number; knownReplacementValue: number | null; knownLiquidationValue: number | null; totalsScope: string }
 const report = ref<Report>(), error = ref(''), query = ref(''), kind = ref(''), rarity = ref(''), storage = ref(''), scope = ref('Player'), minimum = ref<number | ''>(''), fitted = ref(''), sort = ref('name'), descending = ref(false), page = ref(1)
 let revision = 0
 async function load(catalog?: unknown) {
@@ -49,11 +49,25 @@ watch([query, kind, rarity, storage, scope, minimum, fitted, sort, descending], 
 const items = computed(() => filtered.value.filter(i => i.item.namespace !== 'ship-model'))
 const ships = computed(() => filtered.value.filter(i => i.item.namespace === 'ship-model'))
 const visible = computed(() => items.value.slice((page.value - 1) * 100, page.value * 100))
+const breakdownBy = ref<'model' | 'rarity' | 'storage'>('model')
+const breakdown = computed(() => {
+  const groups = new Map<string, { label: string; units: number; priced: number; total: number }>()
+  for (const row of filtered.value) {
+    if (row.scope !== 'Player' || !['weapon', 'equipment'].includes(row.item.namespace)) continue
+    const key = breakdownBy.value === 'model' ? row.item.namespace + ' · ' + label(row.item)
+      : breakdownBy.value === 'rarity' ? String(row.rarity ?? 'Unknown') : row.storage
+    const group = groups.get(key) ?? { label: key, units: 0, priced: 0, total: 0 }
+    group.units += row.quantity ?? 0
+    if (row.rarityTotal != null) { group.priced += row.quantity ?? 0; group.total += row.rarityTotal }
+    groups.set(key, group)
+  }
+  return [...groups.values()].sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
+})
 const distinct = computed(() => new Set(filtered.value.map(i => `${i.item.namespace}:${i.item.id}`)).size)
 function download(format: 'csv' | 'json') {
   const cell = (v: unknown) => { let s = v == null ? '' : String(v); if (/^[=+@-]/.test(s)) s = "'" + s; return '"' + s.replaceAll('"', '""') + '"' }
-  const fields = ['namespace', 'id', 'name', 'rarity', 'storage', 'scope', 'fitted', 'quantity', 'baseValue', 'replacementPerItem', 'liquidationPerItem', 'replacementValue', 'liquidationValue', 'priceConfidence', 'priceSource']
-  const csv = [fields, ...filtered.value.map(i => [i.item.namespace, i.item.id, i.item.name, i.rarity, i.storage, i.scope, i.fitted, i.quantity, i.baseValue, i.replacementPerItem, i.liquidationPerItem, i.replacementValue, i.liquidationValue, i.priceConfidence, i.priceSource])].map(r => r.map(cell).join(',')).join('\r\n')
+  const fields = ['namespace', 'id', 'name', 'rarity', 'storage', 'scope', 'fitted', 'quantity', 'baseValue', 'rarityValue', 'rarityTotal', 'replacementPerItem', 'liquidationPerItem', 'replacementValue', 'liquidationValue', 'priceConfidence', 'priceSource']
+  const csv = [fields, ...filtered.value.map(i => [i.item.namespace, i.item.id, i.item.name, i.rarity, i.storage, i.scope, i.fitted, i.quantity, i.baseValue, i.rarityValue, i.rarityTotal, i.replacementPerItem, i.liquidationPerItem, i.replacementValue, i.liquidationValue, i.priceConfidence, i.priceSource])].map(r => r.map(cell).join(',')).join('\r\n')
   const url = URL.createObjectURL(new Blob([format === 'json' ? JSON.stringify({ provenance: props.snapshot.provenance, items: filtered.value }, null, 2) : csv], { type: format === 'json' ? 'application/json' : 'text/csv' }))
   const a = document.createElement('a'); a.href = url; a.download = `arsenal.${format}`; a.click(); URL.revokeObjectURL(url)
 }
@@ -65,6 +79,8 @@ function download(format: 'csv' | 'json') {
     <template v-if="report">
       <p class="text-cyan-200">Player items: {{ number(report.knownQuantity) }} known units · {{ report.distinctModels }} distinct models · {{ report.unknownQuantityRows }} groups with unknown quantities</p>
       <div class="flex flex-wrap gap-3"><button v-for="c in categorySummary" :key="c.namespace" class="p-3 text-left" @click="kind = c.namespace; scope = 'Player'"><strong>{{ c.namespace }}</strong><p>{{ number(c.quantity) }} known units · {{ c.models }} models · {{ c.unknown }} unknown quantity groups</p></button></div>
+      <p class="text-lg text-cyan-200">Spare weapons and equipment · {{ number(report.storedGearBaseValue) }} credits at rarity-adjusted base value</p>
+      <p class="text-sm text-slate-400">{{ report.pricedGearGroups }} / {{ report.storedGearGroups }} spare gear groups valued.</p>
       <p>Estimated replacement: {{ number(report.knownReplacementValue) }} credits ({{ report.replacementCoverage }} / {{ report.playerGroups }} priced groups; {{ report.missingReplacementValues }} uncovered) · Estimated liquidation: {{ number(report.knownLiquidationValue) }} credits ({{ report.liquidationCoverage }} / {{ report.playerGroups }} priced groups; {{ report.missingLiquidationValues }} uncovered)</p>
       <p class="text-sm text-slate-400">{{ report.totalsScope }}. Unknown prices are excluded, never zero. Estimates use catalog base values and explicit rarity multipliers; modifications, skills, reputation and transaction conditions are not priced.</p>
       <details><summary>Load a local pricing catalog</summary><label class="block py-3">Pricing catalog JSON <input type="file" accept=".json,application/json" @change="catalogFile"></label><p>Catalog version and profile must match this save. Catalogs are transient and require source and confidence labels. No price table is bundled.</p><button @click="load()">Clear catalog</button></details>
@@ -80,8 +96,12 @@ function download(format: 'csv' | 'json') {
         <label><input v-model="descending" type="checkbox"> Descending</label>
         <button @click="download('csv')">Export Arsenal CSV</button><button @click="download('json')">Export Arsenal JSON</button>
       </div>
+      <details v-if="breakdown.length" class="rounded border border-slate-700 p-3"><summary>Gear value breakdown</summary>
+        <label class="block py-2">Group by <select v-model="breakdownBy"><option value="model">Model</option><option value="rarity">Rarity</option><option value="storage">Storage location</option></select></label>
+        <div class="max-h-80 overflow-auto"><table class="w-full text-sm"><thead><tr><th>Group</th><th>Known units</th><th>Priced units</th><th>Rarity-adjusted base total</th></tr></thead><tbody><tr v-for="group in breakdown" :key="group.label"><td>{{ group.label }}</td><td>{{ number(group.units) }}</td><td>{{ number(group.priced) }}</td><td>{{ number(group.priced ? group.total : null) }}</td></tr></tbody></table></div>
+      </details>
       <p>{{ filtered.length }} matching groups · {{ distinct }} distinct models</p>
-      <div class="overflow-auto"><table class="w-full text-sm"><thead><tr><th>Item / raw ID</th><th>Type</th><th>Rarity</th><th>Storage</th><th>Status</th><th>Quantity</th><th>Base / unit replacement / liquidation</th><th>Replacement / liquidation total</th><th>Evidence</th></tr></thead><tbody><tr v-for="(i, n) in visible" :key="n"><td>{{ label(i.item) }}</td><td>{{ i.item.namespace }}</td><td>{{ number(i.rarity) }}</td><td>{{ i.storage }} · {{ i.scope }}</td><td>{{ i.fitted ? 'Fitted' : 'Stored' }}</td><td>{{ number(i.quantity) }}</td><td>{{ number(i.baseValue) }} / {{ number(i.replacementPerItem) }} / {{ number(i.liquidationPerItem) }}</td><td>{{ number(i.replacementValue) }} / {{ number(i.liquidationValue) }}</td><td><details><summary>{{ i.priceConfidence }} · {{ i.priceSource ?? 'No pricing catalog' }}</summary><pre>{{ JSON.stringify(i.evidence, null, 2) }}</pre></details></td></tr></tbody></table></div>
+      <div class="overflow-auto"><table class="w-full text-sm"><thead><tr><th>Item / raw ID</th><th>Type</th><th>Rarity</th><th>Storage</th><th>Status</th><th>Quantity</th><th>Base / rarity-adjusted unit</th><th>Rarity-adjusted total</th><th>Unit replacement / liquidation</th><th>Replacement / liquidation total</th><th>Evidence</th></tr></thead><tbody><tr v-for="(i, n) in visible" :key="n"><td>{{ label(i.item) }}</td><td>{{ i.item.namespace }}</td><td>{{ number(i.rarity) }}</td><td>{{ i.storage }} · {{ i.scope }}</td><td>{{ i.fitted ? 'Fitted' : 'Stored' }}</td><td>{{ number(i.quantity) }}</td><td>{{ number(i.baseValue) }} / {{ number(i.rarityValue) }}</td><td>{{ number(i.rarityTotal) }}</td><td>{{ number(i.replacementPerItem) }} / {{ number(i.liquidationPerItem) }}</td><td>{{ number(i.replacementValue) }} / {{ number(i.liquidationValue) }}</td><td><details><summary>{{ i.priceConfidence }} · {{ i.priceSource ?? 'No pricing catalog' }}</summary><pre>{{ JSON.stringify(i.evidence, null, 2) }}</pre></details></td></tr></tbody></table></div>
       <p v-if="!items.length">No matching inventory items.</p>
       <div class="flex gap-3"><button :disabled="page <= 1" @click="page--">Previous</button><span>Page {{ page }} / {{ Math.max(1, Math.ceil(items.length / 100)) }}</span><button :disabled="page * 100 >= items.length" @click="page++">Next</button></div>
       <section><h3 class="text-lg">Stored ships</h3><p v-if="!ships.length">No identifiable stored ships in this selection.</p><ul><li v-for="(s, n) in ships" :key="n">{{ label(s.item) }} · {{ s.storage }} · {{ number(s.quantity) }} · {{ s.scope }}</li></ul></section>

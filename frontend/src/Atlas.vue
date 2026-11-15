@@ -131,6 +131,7 @@ watch(() => props.snapshot, () => { selected.value = null; destination.value = n
           <p class="text-slate-400">Sector #{{ current.id }} · ({{ number(current.x) }}, {{ number(current.y) }})</p>
           <p v-if="playerDistance != null && current.id !== playerSector">Direct distance from saved sector · {{ playerDistance.toFixed(1) }} pc</p>
           <p>Level {{ number(current.level) }} · Population {{ number(current.population) }}</p>
+          <p v-if="current.industry" class="text-sm text-slate-300">{{ current.industry.environment ?? 'Unknown environment' }} · Solar factor {{ number(current.industry.solarOutput) }} · Mineral factor {{ number(current.industry.mineralRichness) }} · Observed asteroid fields {{ number(current.industry.observedAsteroidFields) }} · Known deposit units {{ number(current.industry.resourceDeposits) }}</p>
           <p>Saved gate exits · {{ exits.length ? exits.map(sectorName).join(', ') : 'None visible' }}</p>
           <label class="grid gap-1 text-sm">Gate route destination<select v-model="destination"><option :value="null">Choose destination</option><option v-for="s in snapshot.sectors.filter(s => s.id !== current!.id)" :key="s.id" :value="s.id">{{ sectorLabel(s) }} #{{ s.id }}</option></select></label>
           <p v-if="route?.path" class="text-sm text-cyan-200">{{ route.jumps }} gate jumps · {{ route.path.map(sectorName).join(' → ') }}</p>
@@ -139,7 +140,7 @@ watch(() => props.snapshot, () => { selected.value = null; destination.value = n
           <h4 class="font-semibold">{{ sectorStations.length }} observed station records</h4>
           <p v-if="!sectorStations.length" class="text-slate-400">No station records in this view. Services remain unknown.</p>
           <div v-for="s in sectorStations" :key="s.evidence.graphRecord ?? s.id" class="rounded border border-slate-800 p-3 text-sm">
-            <p>{{ s.kind ?? 'Unknown structure' }} #{{ s.id }} · {{ label(s.faction) }}<span v-if="s.playerOwned"> · Player-owned</span><span v-else-if="s.evidence.raw.ownerID === 1"> · Ownership unverified</span></p><p class="text-slate-400">Raw owner {{ s.evidence.raw.ownerID ?? 'Unknown' }} · Building state {{ s.evidence.raw.buildingState ?? 'Unknown' }} · State {{ s.evidence.raw.state ?? 'Unknown' }} · Operation unknown · Model {{ number(s.modelId) }} · Plan {{ number(s.buildingPlanId) }} · Level {{ number(s.level) }}</p>
+            <p>{{ s.kind ?? 'Unknown structure' }} #{{ s.id }} · {{ label(s.faction) }}<span v-if="s.operationState"> · {{ s.operationState }}</span><span v-if="s.playerOwned"> · Player-owned</span><span v-else-if="s.evidence.raw.ownerID === 1"> · Ownership unverified</span></p><p class="text-slate-400">Raw owner {{ s.evidence.raw.ownerID ?? 'Unknown' }} · Building state {{ s.evidence.raw.buildingState ?? 'Unknown' }} · State {{ s.evidence.raw.state ?? 'Unknown' }} · Model {{ number(s.modelId) }} · Plan {{ number(s.buildingPlanId) }} · Level {{ number(s.level) }}</p>
             <p>{{ stationStockCounts.get(s.evidence.graphRecord ?? -1) ?? 0 }} inventory observations</p>
           </div>
           <p class="text-xs text-slate-400">Source: {{ current.evidence.source }} · {{ current.evidence.confidence }} · {{ snapshot.provenance.gameVersion ?? 'Unknown version' }}</p>

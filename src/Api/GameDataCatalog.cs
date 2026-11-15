@@ -132,6 +132,7 @@ sealed class GameDataCatalog
         {
             switch (table)
             {
+                case "Asteroid deposits":
                 case "Sector prices":
                 case "Codex prices":
                     AddName(row, "itemID", IdentifierCategory.Commodity);

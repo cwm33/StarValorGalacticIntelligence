@@ -1,6 +1,6 @@
 # Item pricing catalogs
 
-No installed game files or authentic prices were available for this cloud change. Existing local documentation establishes sector commodity price direction, not weapon/equipment base tables, rarity factors or player sell modifiers. Saved market prices are observations and never substitute for an item catalog.
+Installed Steam build 26582067 (Star Valor 2.251d) supports a private baseline weapon and equipment catalog. Use the read-only extractor below with an authentic 2.251 manual save or autosave.
 
 `GET /api/{snapshot}/arsenal?spoilers=false` builds the inventory with unknown valuations. `POST /api/{snapshot}/arsenal/value?spoilers=false` accepts a transient `PricingCatalog`. The browser Arsenal can load the same JSON from a local file. The API uses the already discovery-filtered projection; normal spoiler controls apply. Nothing is saved to disk by this feature.
 
@@ -40,3 +40,19 @@ Rarity is a separate saved attribute. Equipment modifications, crafted attribute
 4. Validate an unmodified item of each relevant category and rarity against UI prices and controlled purchases/sales. Record credits and quantity before/after, item ID, rarity, modifications, station, faction, skills and refresh state. Separate base price, replacement estimate and actual liquidation proceeds. Repeat under changed reputation/skills and the active Galaxy Reforged configuration to identify price-affecting settings.
 5. Load the private catalog in Arsenal. Confirm per-unit and total calculations, exact version/profile rejection, unknown items/rarities, partial coverage and station-stock exclusion. Compare fitted and stored instances of the same ID. Unsupported modifications must remain documented limitations rather than hidden factors.
 6. Publish only semantic findings and synthetic reproducers. Do not commit game tables, private paths, real saves or proprietary assembly content. Solar/mineral mapping and ownership/state interpretation require their own controlled before/after observations.
+
+
+## Build 26582067 extraction
+
+With .NET 10, Python 3.11+ and UnityPy installed, run this from the repository root:
+
+```powershell
+python tools/ItemPricing/extract.py '<Star Valor installation>' '<private save path>' '<new catalog path outside Git>' --profile 'Galaxy Reforged'
+```
+
+Import the same save with that profile and load the JSON from Arsenal. The extractor validates the installed assembly and asset hashes. It reads the Unity Resources equipment index and validates sequential asset identifiers and names. The catalog records the save SHA-256 because weapon definitions and indices can differ between saves. Regenerate it for each newer snapshot.
+
+- Equipment base value uses tech level plus sort power and an equipment-space contribution. Zero-space equipment has a 1.4 factor. Runtime ID assignment uses the Resources load order.
+- Weapon base value uses raw normal-rarity DPS, slot space and range, with adjustments for beam components, torpedoes and damage type. Crafted definitions contribute their saved stats. The game applies rarity factors 0.4, 1, 2, 5, 10 and 12 for rarity 0 through 5. Unknown rarities are excluded from valuation.
+- The game applies reputation, the purchasing skill and the ship trade modifier on purchases, with a floor of half the rarity-adjusted price. Resale starts at 10% plus the selling skill, then applies the ship trade modifier, adds 60 credits for weapons/equipment, and caps at half the rarity-adjusted price. Crew, ship bonuses and equipment contribute to the ship modifier. Ship hulls use a separate model-power/class/rarity formula, and equipped ship loadouts have their own transaction path.
+- Replacement and liquidation estimates remain unavailable for generated catalogs. Effective player modifiers, instance effects, live market access and Galaxy Reforged settings require controlled observations.

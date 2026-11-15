@@ -251,6 +251,27 @@ Test("same equipment IDs resolve across fitted, cargo, station stock and modules
     } finally { Directory.Delete(directory, true); }
 });
 
+Test("modern sector factors and deposit scoring use saved evidence", () => {
+    var v = Fixture();
+    var sector = v.Tables["Sectors"].Single();
+    sector["sectorType"] = 3;
+    sector["sunSize"] = 0.8;
+    sector["mineralLevel"] = 0.75;
+    v.Tables["Asteroid deposits"] = [Row(("sectorIndex", 0), ("asteroidRecord", 3), ("quantity", 40)),
+        Row(("sectorIndex", 0), ("asteroidRecord", 3), ("quantity", 12))];
+    var metrics = Project(v).Sectors.Single().Industry!;
+    Require(metrics.SolarOutput == 0 && metrics.MineralRichness == 0.75 && metrics.ResourceDeposits == 52);
+    Require(metrics.Suitability?.Solar == 0 && metrics.Suitability.Minerals == 75 &&
+        Math.Abs(metrics.Suitability.Mining!.Value - 100d / 3) < 0.001);
+});
+Test("stash codes preserve incompatible item categories", () => {
+    var v = Fixture();
+    v.Tables["Player cargo"] = [Row(("itemType", 2), ("stockStationID", -4), ("itemID", 2)),
+        Row(("itemType", 1), ("stockStationID", -4), ("itemID", 2))];
+    var cargo = Project(v).Cargo;
+    Require(cargo[0].Storage == "Equipment stash" && cargo[1].Storage == "Unmapped storage (-4)");
+    Require(Equals(cargo[1].Evidence.Raw["stockStationID"], -4));
+});
 Test("raw industrial metrics require validated normalization before scoring", () => {
     var s = Project(Fixture());
     s = s with { Sectors = [s.Sectors[0] with { Industry = new(SolarOutput: 400, MineralRichness: 20, Source: "Synthetic raw units") }] };

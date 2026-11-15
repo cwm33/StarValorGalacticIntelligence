@@ -119,7 +119,19 @@ public sealed class SaveView
                 if (!spoilers) continue;
             }
             visible.Add(index);
-            Add("Sectors", sector, "name x y incX incY level discovered spotted population", ("sectorIndex", index));
+            Add("Sectors", sector, "name x y incX incY level discovered spotted population mineralLevel bigAsteroidDensity", ("sectorIndex", index),
+                ("sectorType", Child(sector, "type") is { } kind ? Field(kind, "value__") : Field(sector, "type")),
+                ("sunSize", Field(Child(Child(sector, "bg"), "sunColor"), "sunSize")));
+            foreach (var field in List(Child(sector, "asteroidFields")).DistinctBy(node => node.Id))
+                if (spoilers || Field(field, "discovered") is true)
+                    Add("Asteroid fields", field, "size asteroidsLeft discovered cleared", ("sectorIndex", index));
+            foreach (var asteroid in List(Child(sector, "bigAsteroids")).DistinctBy(node => node.Id))
+            {
+                if (!spoilers && Field(asteroid, "scanned") is not true) continue;
+                foreach (var deposit in List(Child(asteroid, "resources")).DistinctBy(node => node.Id))
+                    Add("Asteroid deposits", deposit, "itemID quantity",
+                        ("sectorIndex", index), ("asteroidRecord", asteroid.Id), ("scanned", Field(asteroid, "scanned")));
+            }
             foreach (var price in List(Child(Child(sector, "marketPriceControl"), "prices")))
                 Add("Sector prices", price, "itemID buyingPrice sellingPrice tradePrice IsBuyingOverstocked IsResourceStarved IsTrading IsTradingOverstocked", ("sectorIndex", index));
             foreach (var actor in List(Child(sector, "aiChars")))

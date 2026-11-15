@@ -3,8 +3,8 @@ public sealed record AdvisorWeights(double Stations = 1, double Markets = 1, dou
 {
     public static AdvisorWeights Preset(string preset) => preset switch
     {
-        "industrial" => new(1, 2, 1, 0, 2, 3, 3, 1, 3),
-        "mining" => new(0, 1, 0, 0, 2, 0, 3, 4, 1),
+        "industrial" => new(1, 2, 1, 0, 2, 6, 5, 2, 2),
+        "mining" => new(0, 1, 0, 0, 2, 0, 6, 4, 1),
         _ => new(2, 4, 2, 1, 3)
     };
 }
@@ -30,10 +30,10 @@ public static class HomeAdvisor
             void Metric(string criterion, double weight, double? value, string? source) =>
                 reasons.Add(new(criterion, double.IsFinite(weight) ? Math.Clamp(weight, 0, 10) : 0,
                     value is double n && double.IsFinite(n) && n >= 0 && n <= 100 && !string.IsNullOrWhiteSpace(source) ? n : null,
-                    source ?? "Unknown: no validated field mapping; excluded from score."));
+                    value.HasValue ? source! : "Unknown: no validated field mapping; excluded from score."));
             Metric("Solar output", weights.Solar, sector.Industry?.Suitability?.Solar, sector.Industry?.Suitability?.NormalizationSource);
             Metric("Mineral richness", weights.Minerals, sector.Industry?.Suitability?.Minerals, sector.Industry?.Suitability?.NormalizationSource);
-            Metric("Mining potential", weights.Mining, sector.Industry?.Suitability?.Mining, sector.Industry?.Suitability?.NormalizationSource);
+            Metric("Mining potential", weights.Mining, sector.Industry?.Suitability?.Mining, "Known large asteroids with remaining deposits. Three saturate this planning criterion.");
             Observed("Industrial infrastructure", weights.Industry, stations.Count(s => s.Kind is "Industrial" or "Workshop"), 3, "Industrial or workshop subtypes; production and operation unverified.");
             foreach (var unknown in new[] { "Technology level", "Friendly faction presence", "Neighbor commerce", "Resources and industrial potential", "Threat and faction access" })
                 reasons.Add(new(unknown, 0, null, "Unknown: no validated interpretation or extraction."));

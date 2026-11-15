@@ -165,6 +165,12 @@ if __name__ == '__main__':
     pricing = {'gameVersion': '2.251', 'mechanicsProfile': 'Galaxy Reforged', 'source': 'Synthetic only', 'confidence': 'Synthetic', 'items': [{'namespace': 'equipment', 'id': 29, 'baseValue': 100, 'rarityMultipliers': {'1': 2}, 'replacementMultiplier': 1, 'liquidationMultiplier': 0.5}]}
     priced = request(f'/api/{mod}/arsenal/value', json.dumps(pricing).encode(), {'Content-Type': 'application/json'})
     assert priced['knownReplacementValue'] == 200 and priced['knownLiquidationValue'] == 100
+    assert priced['storedGearBaseValue'] is None or priced['pricedGearGroups'] > 0
+    try:
+        request(f'/api/{mod}/arsenal/value', json.dumps(dict(pricing, saveSha256='0' * 64)).encode(), {'Content-Type': 'application/json'})
+        raise AssertionError('Accepted pricing for a different save')
+    except urllib.error.HTTPError as error:
+        assert error.code == 400
     assert all(i['scope'] != 'Player' or i['storage'] != 'Station storage #31' or i['item']['namespace'] == 'ship-model' for i in priced['items'])
     pricing['gameVersion'] = 'future'
     try:
