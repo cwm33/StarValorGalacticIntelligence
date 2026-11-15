@@ -73,7 +73,7 @@ public sealed class SaveView
         {
             Add("Player ship", playerShip, "shipModelID HPstatus energyStatus shieldStatus");
             foreach (var item in List(Child(playerShip, "cargo")))
-                Add("Player cargo", item, "itemType itemID rarity qnt shipLoadoutID",
+                Add("Player cargo", item, "itemType itemID rarity qnt shipLoadoutID stockStationID",
                     ("storageKind", Field(item, "stockStationID") switch
                     {
                         -1 => "Aboard",

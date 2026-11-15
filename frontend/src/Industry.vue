@@ -50,7 +50,7 @@ async function plan() {
       <button :disabled="busy">Calculate custom recipe</button>
     </form>
     <details class="space-y-3 rounded border border-slate-700 p-4"><summary>Custom production scenario calculator</summary>
-      <p class="text-sm text-amber-200">User-supplied scenarios are experimental. Vanilla, Base Building and Galaxy Reforged behavior must be validated separately. Catalog profile and version must match the scenario. This calculator never assumes market stock belongs to you.</p>
+      <p class="text-sm text-amber-200">User-supplied scenarios are experimental. Recipes and performance need local evidence for the active settings. Catalog profile and version must match the scenario. This calculator never assumes market stock belongs to you.</p>
       <p class="text-sm text-slate-400">Add recipes with id, profile, gameVersion, source, inputs and outputs. Each amount has item: { namespace: "commodity", id: your ID } and amount. Orders contain recipeId and cycles. Available lists your manually confirmed resource amounts. Omitted amounts remain unknown.</p>
       <label class="grid gap-2 text-sm">Scenario JSON<textarea v-model="scenario" class="min-h-64 w-full rounded border border-slate-600 bg-slate-950 p-3 font-mono" spellcheck="false"></textarea></label>
       <button :disabled="busy" @click="plan">Calculate resource balance</button>

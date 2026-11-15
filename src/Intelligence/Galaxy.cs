@@ -9,9 +9,13 @@ public sealed record Evidence(string Source, int? GraphRecord, IReadOnlyDictiona
 public sealed record Provenance(string SnapshotId, DateTimeOffset ImportedAt, string? GameVersion,
     string MechanicsProfile, bool? BaseBuilding, bool IncludesSpoilers, string SectorIdentity = "Save-list index; cross-save stability unverified");
 public sealed record Sector(int Id, string? Name, double? X, double? Y, int? Level, bool? Discovered,
-    bool? Spotted, double? Population, Evidence Evidence, double? RealX = null, double? RealY = null);
+    bool? Spotted, double? Population, Evidence Evidence, double? RealX = null, double? RealY = null, IndustrialMetrics? Industry = null);
 public sealed record Station(int Id, int SectorId, Identity? Faction, int? ModelId, int? BuildingPlanId,
-    bool? Discovered, int? Level, Evidence Evidence, string Kind = "Station", bool? PlayerOwned = null);
+    bool? Discovered, int? Level, Evidence Evidence, string Kind = "Station", bool? PlayerOwned = null)
+{
+    public string OwnershipConfidence => PlayerOwned == true ? "Verified" : PlayerOwned == false ? "Non-player owner field" : "Unverified";
+    public bool? Operational => null; // buildingState/state enum semantics require controlled validation.
+}
 public sealed record FactionRelation(int From, int To, double? Value, Evidence Evidence);
 public sealed record Inventory(Identity Item, int StationId, string Source, double? Stock, double? LastStock,
     int? Rarity, Evidence Evidence, int? StationRecord = null, int? SectorId = null);

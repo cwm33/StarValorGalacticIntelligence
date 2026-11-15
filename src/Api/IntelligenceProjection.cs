@@ -25,15 +25,14 @@ public static class IntelligenceProjection
         var m = view.Metadata;
         var version = Text(m, "savedVersion");
         var profile = Text(m, "mechanics") ?? "Unknown";
-        var verifiedLayout = profile is "Vanilla" or "Unknown";
         var sectors = Rows("Sectors").Where(r => Int(r, "sectorIndex").HasValue).Select(r => new Sector(
             Int(r, "sectorIndex")!.Value, Text(r, "name"), Number(r, "x"), Number(r, "y"), Int(r, "level"),
             Bool(r, "discovered"), Bool(r, "spotted"), Number(r, "population"), Source("Sectors", r), Number(r, "x") + Number(r, "incX"), Number(r, "y") + Number(r, "incY"))).ToArray();
         var stations = Rows("Stations").Where(r => Int(r, "id").HasValue && Int(r, "sectorIndex").HasValue)
             .Select(r => new Station(Int(r, "id")!.Value, Int(r, "sectorIndex")!.Value, Id(r, "factionIndex", "faction"),
                 Int(r, "modelIndex"), Int(r, "buildingPlanID"), Bool(r, "discovered"), Int(r, "level"), Source("Stations", r),
-                Text(r, "type") == "JumpgateStation" ? "Jumpgate" : Text(r, "type") ?? "Station",
-                verifiedLayout && version == "2.251" && Int(r, "ownerID") is int owner ? owner == 1 : null)).ToArray();
+                StationSemantics.Classify(Text(r, "type")),
+                Int(r, "ownerID") == 1 ? null : Int(r, "ownerID") is not null ? false : null)).ToArray();
         var stationRecords = stations.Where(station => station.Evidence.GraphRecord.HasValue)
             .ToDictionary(station => station.Evidence.GraphRecord!.Value);
         var sectorIds = sectors.Select(sector => sector.Id).ToHashSet();
@@ -42,7 +41,7 @@ public static class IntelligenceProjection
                 Int(r, "sectorIndex") is int from && Int(r, "connectedSector") is int to &&
                 from != to && sectorIds.Contains(from) && sectorIds.Contains(to))
             .Select(r => new JumpConnection(Int(r, "sectorIndex")!.Value, Int(r, "connectedSector")!.Value,
-                verifiedLayout && version is ("2.05" or "2.251") ? "Verified" : "Observed", Source("Generated jumpgates", r))).ToArray();
+                version is ("2.05" or "2.251") ? "Verified" : "Observed", Source("Generated jumpgates", r))).ToArray();
         var stationIndex = stations.Where(s => s.Id >= 0).GroupBy(s => s.Id).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single());
         var markets = new List<MarketObservation>();
         foreach (var table in new[] { "Sector prices", "Codex prices" })
@@ -53,7 +52,7 @@ public static class IntelligenceProjection
             var sectorId = Int(r, "sectorIndex") ?? (Bool(r, "uniqueStationID") != false && stationId.HasValue && stationIndex.TryGetValue(stationId.Value, out var station) ? station.SectorId : (int?)null);
             markets.Add(new(commodity, table, sectorId, stationId, Number(r, "buyingPrice"), Number(r, "sellingPrice"),
                 Number(r, "tradePrice"), Number(r, "price"), Bool(r, "IsBuyingOverstocked"), Bool(r, "IsResourceStarved"),
-                Bool(r, "IsTrading"), Bool(r, "IsTradingOverstocked"), Source(table, r), table == "Sector prices" && verifiedLayout && version == "2.251"
+                Bool(r, "IsTrading"), Bool(r, "IsTradingOverstocked"), Source(table, r), table == "Sector prices" && version == "2.251"
                     ? "Sector summary: station buy/sell direction verified; transaction terms unverified" : "Unverified"));
         }
         var inventory = new List<Inventory>();

@@ -9,8 +9,8 @@ export function compareSnapshots(before: Snapshot, after: Snapshot): Comparison 
     'Absent records and missing values are unknown, not zero or evidence of loss. Duplicate keys are excluded; negative price and stock sentinels have no numeric delta.',
   ]
   if (before.provenance.includesSpoilers || after.provenance.includesSpoilers) return { changes: [], warnings: ['Disable spoilers to compare discovered snapshots.'] }
-  if (before.provenance.gameVersion !== after.provenance.gameVersion || before.provenance.mechanicsProfile !== after.provenance.mechanicsProfile)
-    warnings.push('Version or mechanics profile changed. Only matching source-specific records are compared; semantic compatibility is unverified.')
+  if (before.provenance.gameVersion !== after.provenance.gameVersion)
+    warnings.push('Version changed. Only matching source-specific records are compared; semantic compatibility is unverified.')
   if (before.player.name !== after.player.name) warnings.push('Player name differs. Campaign continuity must be checked before interpreting changes.')
   function add(category: string, identity: string, a: number | string | null, b: number | string | null) {
     if (a === b) return
