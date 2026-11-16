@@ -129,6 +129,7 @@ test('Galaxy Reforged Arsenal filtering, valuation, exports and advisor presets'
   await page.getByLabel('Fitted status').selectOption('false')
   await expect(page.getByText('No matching inventory items.')).toBeVisible()
   await page.getByLabel('Fitted status').selectOption('true')
+  await expect(page.getByText('Installed baseline · Star Valor 2.251d Steam build 26582067 equipment baseline')).toBeVisible()
   await page.getByText('Load a local pricing catalog', { exact: true }).click()
   await page.getByLabel('Pricing catalog JSON').setInputFiles({ name: 'synthetic-pricing.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, gameVersion: '2.251', mechanicsProfile: 'Galaxy Reforged', source: 'Synthetic browser fixture', confidence: 'Synthetic', items: [{ namespace: 'equipment', id: 29, baseValue: 100, rarityMultipliers: { 1: 2 }, replacementMultiplier: 1, liquidationMultiplier: 0.5 }] })) })
   await expect(page.getByText('Estimated replacement: 200 credits', { exact: false })).toBeVisible()

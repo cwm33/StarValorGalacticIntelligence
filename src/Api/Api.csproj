@@ -6,6 +6,10 @@
     <ProjectReference Include="..\GameDataResolver\GameDataResolver.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\data\equipment-pricing-2.251.json" LogicalName="EquipmentPricing.2.251.json" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

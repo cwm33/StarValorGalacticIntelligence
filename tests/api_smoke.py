@@ -156,6 +156,10 @@ if __name__ == '__main__':
     print('Galaxy Reforged uses baseline catalog, gate and market semantics')
 
     arsenal = request(f'/api/{mod}/arsenal')
+    fitted = next(row for row in arsenal['items'] if row['scope'] == 'Player' and row['item']['namespace'] == 'equipment')
+    assert fitted['baseValue'] == 1960 and fitted['rarityValue'] == 1960
+    assert fitted['priceConfidence'] == 'Installed baseline'
+    assert all(row['baseValue'] is None for row in arsenal['items'] if row['item']['namespace'] == 'weapon')
     assert arsenal['knownReplacementValue'] is None and arsenal['knownLiquidationValue'] is None
     assert arsenal['knownQuantity'] == 3
     assert arsenal['missingReplacementValues'] == arsenal['playerGroups']

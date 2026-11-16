@@ -18,6 +18,11 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 builder.Services.AddSingleton<GameDataCatalog>();
 var app = builder.Build();
 var catalog = app.Services.GetRequiredService<GameDataCatalog>();
+using var equipmentPricing = typeof(Session).Assembly.GetManifestResourceStream("EquipmentPricing.2.251.json")
+    ?? throw new InvalidOperationException("Bundled equipment pricing catalog is missing.");
+var baselinePricing = System.Text.Json.JsonSerializer.Deserialize<GalacticIntelligence.PricingCatalog>(
+    equipmentPricing, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))
+    ?? throw new InvalidOperationException("Bundled equipment pricing catalog is empty.");
 app.Use(async (context, next) =>
 {
     if (context.Request.Host.Host != "127.0.0.1" || context.Request.Host.Port != port)
@@ -112,7 +117,12 @@ app.MapGet("/api/{id:guid}/trade", (Guid id, bool? spoilers, bool? experimental,
 app.MapGet("/api/{id:guid}/arsenal", (Guid id, bool? spoilers) =>
 {
     if (Find(id) is not { } s) return Missing();
-    return Results.Ok(GalacticIntelligence.Arsenal.Build(spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value));
+    var snapshot = spoilers == true ? s.FullIntelligence.Value : s.SafeIntelligence.Value;
+    // Installed equipment IDs use the same baseline across supported import profiles.
+    var pricing = snapshot.Provenance.GameVersion == baselinePricing.GameVersion
+        ? baselinePricing with { MechanicsProfile = snapshot.Provenance.MechanicsProfile }
+        : null;
+    return Results.Ok(GalacticIntelligence.Arsenal.Build(snapshot, pricing));
 });
 app.MapPost("/api/{id:guid}/arsenal/value", (Guid id, bool? spoilers, GalacticIntelligence.PricingCatalog pricing) =>
 {
